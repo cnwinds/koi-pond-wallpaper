@@ -1,16 +1,25 @@
 /* Koi idle swim, food pellets, lily pads, and quiet particles.
  *
- * Swimming model (see README):
- * - Carangiform body wave: A(s)~s^1.9 traveling posteriorly (Sfakiotakis 1999;
- *   Videler envelope). Head stays quiet; tail carries amplitude.
- * - Koi C-turns: body curvature follows yaw rate (Wu, Yang, Zeng 2007).
- * - Reynolds 1999 steering: wander (circle-ahead), seek/arrive, separation.
- *   steering = desiredVel - currentVel; headings use wrapped error + omega.
- * - Burst-and-coast gait (Videler; cyprinid koi), not a constant thrash.
+ * Motion model (reimplemented; not a copy of any third-party source):
+ * - swim / idle state machine; idle lasts a few seconds while cruising
+ * - targetHeading retargeted infrequently with a random offset
+ * - Soft edge + separation blended into that heading
+ * - Yaw capped so turn radius stays >= 0.85 body lengths (swim through
+ *   turns; do not spin about the head)
+ * - Cruise speed with slow noise; accel/decel is rate-capped
+ * - Small sin wiggle on the move angle; tail-beat Hz ~ speed / length
+ * - IK joint chain from the head, per-link + cumulative bend limits
+ *
+ * Inspired by the publicly visible koi.rest client approach, plus
+ * Reynolds wander/steering and standard IK follow chains.
  */
 (function (global) {
   const TWO_PI = Math.PI * 2;
-  const SPINE_N = 8;
+  const SPINE_N = 12;
+  const JOINT_LIMIT = Math.PI / 9;
+  const MAX_BEND = 1.75;
+  const MIN_TURN_RADII = 0.85;
+  const SEEK_TURN_RADII = 0.35;
 
   function clamp(n, a, b) {
     return Math.min(b, Math.max(a, n));
@@ -21,11 +30,6 @@
     return a;
   }
 
-  function damp(current, target, dt, rate) {
-    if (rate <= 0) return target;
-    return current + (target - current) * (1 - Math.exp(-dt * rate));
-  }
-
   function create(canvas, options) {
     const ctx = canvas.getContext("2d", { alpha: true, desynchronized: true });
     const sprites = options.sprites;
@@ -34,6 +38,7 @@
     let cssW = 1;
     let cssH = 1;
     let dpr = 1;
+    let clock = 0;
     const fish = [];
     const food = [];
     const pads = [];
@@ -65,14 +70,7 @@
       for (let i = 0; i < SPINE_N; i++) {
         const x = f.x - Math.cos(f.heading) * i * spacing;
         const y = f.y - Math.sin(f.heading) * i * spacing;
-        f.spine.push({
-          x: x,
-          y: y,
-          a: f.heading,
-          dx: x,
-          dy: y,
-          da: f.heading,
-        });
+        f.spine.push({ x: x, y: y, a: f.heading });
       }
     }
 
@@ -80,30 +78,28 @@
       const p = pondPoint();
       const size = 0.92 + rng() * 0.5;
       const heading = rng() * TWO_PI;
+      const cruise = 56 + rng() * 22;
       const f = {
         x: p.x,
         y: p.y,
-        heading,
+        heading: heading,
         angle: heading,
+        targetHeading: heading,
         omega: 0,
-        speed: 18 + rng() * 10,
-        vx: Math.cos(heading) * 20,
-        vy: Math.sin(heading) * 20,
-        cruise: 20 + rng() * 14,
-        boost: 50 + rng() * 16,
-        maxOmega: 1.05 + rng() * 0.45,
-        size,
+        speed: cruise,
+        cruise: cruise,
+        minSpeed: cruise * 0.3,
+        maxSpeed: cruise * 1.7,
+        accel: 64 + rng() * 18,
+        boost: cruise * 1.5,
+        size: size,
         phase: rng() * TWO_PI,
-        hz: 1.5,
-        waveGain: 0.7,
-        bendBias: 0,
         greed: 0.32 + rng() * 0.68,
         vision: 220 + rng() * 260,
-        wanderAngle: (rng() - 0.5) * 1.2,
-        wanderJitter: 0.55 + rng() * 0.7,
-        turnSide: 0,
-        gait: rng() < 0.45 ? "coast" : "burst",
-        gaitT: 0.4 + rng() * 1.6,
+        mode: "swim",
+        idleT: 0,
+        retargetT: 0,
+        retargetIn: 1.2 + rng() * 1.6,
         sprite: sprite || sprites.koi[(rng() * sprites.koi.length) | 0],
         food: null,
         eatT: 0,
@@ -205,9 +201,8 @@
       pellet.eaten = true;
       f.eatT = 0.42;
       f.food = null;
-      f.gait = "coast";
-      f.gaitT = 0.8 + rng() * 0.5;
-      f.speed *= 0.45;
+      f.mode = "idle";
+      f.idleT = 0.6 + rng() * 0.8;
       if (water) water.impulse(pellet.x / cssW, pellet.y / cssH, 0.28);
       for (let i = 0; i < 4; i++) {
         bubbles.push({
@@ -220,93 +215,65 @@
       }
     }
 
-    function stepGait(f, dt, needPower, calm) {
-      f.gaitT -= dt;
-      if (f.gaitT <= 0) {
-        if (f.gait === "burst") {
-          f.gait = "coast";
-          f.gaitT = calm ? 2.2 + rng() * 1.6 : 1.05 + rng() * 1.7;
-        } else {
-          f.gait = "burst";
-          f.gaitT = (rng() < 0.55 ? 0.36 : 0.7) * (calm ? 1.15 : 1);
-        }
-      }
-      if (needPower && f.gait === "coast") {
-        f.gait = "burst";
-        f.gaitT = 0.4 + rng() * 0.25;
-      }
+    function approachSpeed(f, target, dt) {
+      const dv = target - f.speed;
+      const step = f.accel * dt;
+      if (Math.abs(dv) <= step) f.speed = target;
+      else f.speed += Math.sign(dv) * step;
     }
 
-    function wallSteer(f) {
-      const mx = cssW * 0.14;
-      const my = cssH * 0.14;
-      let ax = 0;
-      let ay = 0;
-      if (f.x < mx) ax += Math.pow(1 - f.x / mx, 1.6);
-      else if (f.x > cssW - mx) ax -= Math.pow(1 - (cssW - f.x) / mx, 1.6);
-      if (f.y < my) ay += Math.pow(1 - f.y / my, 1.6);
-      else if (f.y > cssH - my) ay -= Math.pow(1 - (cssH - f.y) / my, 1.6);
-      return { x: ax, y: ay };
+    function blendHeading(base, sx, sy) {
+      if (sx === 0 && sy === 0) return base;
+      return Math.atan2(Math.sin(base) + sy, Math.cos(base) + sx);
+    }
+
+    function edgeSteer(f) {
+      const m = Math.max(80, Math.min(cssW, cssH) * 0.12);
+      let sx = 0;
+      let sy = 0;
+      if (f.x < m) sx += (1 - f.x / m) * 3;
+      if (f.x > cssW - m) sx -= (1 - (cssW - f.x) / m) * 3;
+      if (f.y < m) sy += (1 - f.y / m) * 3;
+      if (f.y > cssH - m) sy -= (1 - (cssH - f.y) / m) * 3;
+      return { x: sx, y: sy };
     }
 
     function separation(f, i) {
       let sx = 0;
       let sy = 0;
+      const len = bodyLength(f);
       for (let j = 0; j < fish.length; j++) {
         if (i === j) continue;
         const o = fish[j];
         const dx = f.x - o.x;
         const dy = f.y - o.y;
         const d = Math.hypot(dx, dy);
-        const min = 58 * ((f.size + o.size) * 0.5);
-        if (d > 0.2 && d < min) {
-          const w = (1 - d / min) / d;
-          sx += dx * w;
-          sy += dy * w;
+        const min = (len + bodyLength(o)) * 0.5;
+        if (d > 0.01 && d < min) {
+          const k = (1 - d / min) * 1.5;
+          sx += (dx / d) * k;
+          sy += (dy / d) * k;
         }
       }
       return { x: sx, y: sy };
     }
 
-    function wanderTarget(f) {
-      const ahead = 88 * f.size;
-      const radius = 36 * f.size;
-      const hx = Math.cos(f.heading);
-      const hy = Math.sin(f.heading);
-      const wx = Math.cos(f.heading + f.wanderAngle);
-      const wy = Math.sin(f.heading + f.wanderAngle);
-      return {
-        x: f.x + hx * ahead + wx * radius,
-        y: f.y + hy * ahead + wy * radius,
-      };
-    }
-
-    function followSpine(f) {
+    function resolveIK(f) {
       const spacing = spacingOf(f);
+      if (!f.spine || f.spine.length !== SPINE_N) initSpine(f);
       const spine = f.spine;
-      if (!spine || spine.length !== SPINE_N) {
-        initSpine(f);
-        return;
-      }
       spine[0].x = f.x;
       spine[0].y = f.y;
       spine[0].a = f.heading;
-      const maxJoint = 0.32;
       for (let i = 1; i < SPINE_N; i++) {
-        let dx = spine[i].x - spine[i - 1].x;
-        let dy = spine[i].y - spine[i - 1].y;
-        let d = Math.hypot(dx, dy);
-        if (d < 1e-4) {
-          dx = -Math.cos(spine[i - 1].a);
-          dy = -Math.sin(spine[i - 1].a);
-          d = 1;
-        }
-        let a = Math.atan2(-dy, -dx);
-        const diff = angWrap(a - spine[i - 1].a);
-        if (Math.abs(diff) > maxJoint) a = spine[i - 1].a + Math.sign(diff) * maxJoint;
-        spine[i].x = spine[i - 1].x - Math.cos(a) * spacing;
-        spine[i].y = spine[i - 1].y - Math.sin(a) * spacing;
+        const prev = spine[i - 1];
+        let desired = Math.atan2(prev.y - spine[i].y, prev.x - spine[i].x);
+        let diff = clamp(angWrap(desired - prev.a), -JOINT_LIMIT, JOINT_LIMIT);
+        let a = prev.a + diff;
+        a = f.heading + clamp(angWrap(a - f.heading), -MAX_BEND, MAX_BEND);
         spine[i].a = a;
+        spine[i].x = prev.x - Math.cos(a) * spacing;
+        spine[i].y = prev.y - Math.sin(a) * spacing;
       }
     }
 
@@ -336,6 +303,7 @@
 
     function update(dt, water, quality) {
       const calm = reducedMotion();
+      clock += dt;
       for (let i = food.length - 1; i >= 0; i--) {
         const pellet = food[i];
         pellet.life -= dt;
@@ -349,140 +317,94 @@
 
       assignSeekers();
 
+      const currentX = (Math.sin(clock * 0.021) * 3.2 + Math.sin(clock * 0.013 + 2) * 2.2) * (calm ? 0.35 : 1);
+      const currentY = (Math.cos(clock * 0.017 + 1) * 2.6 + Math.sin(clock * 0.011 + 4) * 1.8) * (calm ? 0.35 : 1);
+
       for (let i = 0; i < fish.length; i++) {
         const f = fish[i];
         f.eatT = Math.max(0, f.eatT - dt);
         f.rippleT -= dt;
-        if (!f.food) {
-          f.wanderAngle = angWrap(f.wanderAngle + (rng() - 0.5) * 2 * f.wanderJitter * dt);
-          f.wanderAngle = clamp(f.wanderAngle, -0.95, 0.95);
-        }
-
         if (f.food && f.food.eaten) f.food = null;
 
         const seeking = !!(f.food && !f.food.eaten);
-        let desiredX;
-        let desiredY;
-        let desiredSpeed;
         let arriveDist = 0;
 
         if (seeking) {
+          f.mode = "swim";
+          f.idleT = 0;
           const dx = f.food.x - f.x;
           const dy = f.food.y - f.y;
           arriveDist = Math.hypot(dx, dy) || 0.001;
-          const arriveR = 64 * f.size;
-          const seekSpeed = f.boost * (calm ? 0.75 : 1);
-          const ramp = arriveDist < arriveR ? 0.35 + 0.65 * (arriveDist / arriveR) : 1;
-          desiredSpeed = Math.max(seekSpeed * ramp, 12);
-          desiredX = (dx / arriveDist) * desiredSpeed;
-          desiredY = (dy / arriveDist) * desiredSpeed;
-          if (arriveDist < 24 * f.size) eat(f, f.food, water);
-        } else {
-          const w = wanderTarget(f);
-          const dx = w.x - f.x;
-          const dy = w.y - f.y;
-          const d = Math.hypot(dx, dy) || 1;
-          desiredSpeed = f.eatT > 0 ? f.cruise * 0.28 : f.cruise;
-          desiredX = (dx / d) * desiredSpeed;
-          desiredY = (dy / d) * desiredSpeed;
+          f.targetHeading = Math.atan2(dy, dx);
+          if (arriveDist < 32 * f.size) eat(f, f.food, water);
         }
 
+        if (f.mode === "idle") {
+          f.idleT -= dt;
+          approachSpeed(f, f.minSpeed * 0.3, dt);
+          if (f.idleT <= 0) f.mode = "swim";
+        } else if (!seeking) {
+          if (f.eatT <= 0 && rng() < dt * 0.03) {
+            f.mode = "idle";
+            f.idleT = 2 + rng() * 3;
+          }
+          const noise = 0.5 + 0.5 * Math.sin(clock * 0.7 + f.phase);
+          let targetSpeed = clamp(f.cruise * (0.7 + 0.5 * noise), f.minSpeed, f.maxSpeed);
+          if (f.eatT > 0) targetSpeed = f.minSpeed * 0.45;
+          if (calm) targetSpeed *= 0.75;
+          approachSpeed(f, targetSpeed, dt);
+        } else {
+          const arriveR = 70 * f.size;
+          const ramp = arriveDist < arriveR ? 0.4 + 0.6 * (arriveDist / arriveR) : 1;
+          let targetSpeed = Math.max(f.boost * ramp * (calm ? 0.75 : 1), f.minSpeed);
+          approachSpeed(f, targetSpeed, dt);
+        }
+
+        if (!seeking && f.mode === "swim") {
+          f.retargetT += dt;
+          if (f.retargetT >= f.retargetIn) {
+            f.targetHeading = angWrap(f.targetHeading + (rng() * 2.4 - 1.2));
+            f.retargetIn = 1 + rng() * 1.5;
+            f.retargetT = 0;
+          }
+        }
+
+        const edge = edgeSteer(f);
         const sep = separation(f, i);
-        const sepW = seeking && arriveDist < 90 ? 8 : 26;
-        desiredX += sep.x * sepW;
-        desiredY += sep.y * sepW;
-        const wall = wallSteer(f);
-        desiredX += wall.x * 48;
-        desiredY += wall.y * 48;
+        const sepW = seeking && arriveDist < 90 ? 0.25 : 1;
+        const desired = blendHeading(f.targetHeading, edge.x + sep.x * sepW, edge.y + sep.y * sepW);
 
-        const steerX = desiredX - f.vx;
-        const steerY = desiredY - f.vy;
-        const steerMag = Math.hypot(steerX, steerY);
-        const maxSteer = seeking ? 70 : 32;
-        if (steerMag > maxSteer) {
-          desiredX = f.vx + (steerX / steerMag) * maxSteer;
-          desiredY = f.vy + (steerY / steerMag) * maxSteer;
-        } else {
-          desiredX = f.vx + steerX;
-          desiredY = f.vy + steerY;
+        const len = bodyLength(f);
+        const err = angWrap(desired - f.heading);
+        // Cruise keeps r >= 0.85 L. Near food, ease toward a tighter radius
+        // so the pellet is not trapped inside an unreachable turning circle.
+        let minR = MIN_TURN_RADII;
+        if (seeking && arriveDist < len * 1.4) {
+          const t = clamp(arriveDist / (len * 1.4), 0, 1);
+          minR = SEEK_TURN_RADII + (MIN_TURN_RADII - SEEK_TURN_RADII) * t;
         }
-
-        const goalHeading = Math.atan2(desiredY, desiredX);
-        const course = Math.atan2(f.vy, f.vx);
-        const aim = seeking && f.speed > 14 ? course : f.heading;
-        let err = angWrap(goalHeading - aim);
-        if (Math.abs(err) > 2.45) {
-          if (!f.turnSide) f.turnSide = err > 0 ? 1 : -1;
-          err = f.turnSide * Math.abs(err);
-        } else if (Math.abs(err) < 1.05) {
-          f.turnSide = 0;
-        }
-
-        const maxOmega = f.maxOmega * (seeking ? 1.28 : 1) * (f.speed < 10 ? 0.7 : 1);
-        const shaped = Math.pow(clamp(Math.abs(err) / 1.15, 0, 1), 1.65);
-        const desiredOmega = Math.sign(err) * shaped * maxOmega;
-        const maxAlpha = seeking ? 3.6 : 2.2;
-        f.omega += clamp(desiredOmega - f.omega, -maxAlpha * dt, maxAlpha * dt);
-        f.omega = clamp(f.omega, -maxOmega, maxOmega);
-        f.heading = angWrap(f.heading + f.omega * dt);
+        const maxTurn = Math.min(0.8, Math.max(0.02, f.speed / (minR * len)));
+        const omega = clamp(err * 2.5, -maxTurn, maxTurn);
+        f.omega = omega;
+        f.heading = angWrap(f.heading + omega * dt);
         f.angle = f.heading;
 
-        const needPower = seeking || Math.abs(err) > 0.85 || Math.hypot(wall.x, wall.y) > 0.35;
-        stepGait(f, dt, needPower && f.eatT <= 0, calm);
+        const speedRatio = clamp(f.speed / f.cruise, 0.4, 1.6);
+        const wiggle = Math.sin(f.phase) * 0.38 * speedRatio * (calm ? 0.4 : 1);
+        const moveAngle = f.heading + wiggle;
+        f.x += Math.cos(moveAngle) * f.speed * dt + currentX * dt;
+        f.y += Math.sin(moveAngle) * f.speed * dt + currentY * dt;
+        f.x = clamp(f.x, 12, cssW - 12);
+        f.y = clamp(f.y, 12, cssH - 12);
 
-        let targetGain;
-        let targetHz;
-        let targetSpeed;
-        if (f.eatT > 0) {
-          targetGain = 0.12;
-          targetHz = 0.8;
-          targetSpeed = f.cruise * 0.22;
-        } else if (seeking) {
-          targetGain = 1.05;
-          targetHz = 2.15;
-          targetSpeed = desiredSpeed;
-        } else if (f.gait === "coast" && !needPower) {
-          targetGain = 0.16;
-          targetHz = 0.85;
-          targetSpeed = f.cruise * 0.38;
-        } else {
-          targetGain = 1;
-          targetHz = 1.55 + f.speed * 0.012;
-          targetSpeed = f.cruise;
-        }
-        if (calm) {
-          targetGain *= 0.4;
-          targetHz *= 0.7;
-          targetSpeed *= 0.75;
-        }
+        const beatHz = clamp(f.speed / (len * 0.8), 0.12, 0.65);
+        f.phase += dt * TWO_PI * beatHz;
 
-        const yawCost = Math.min(0.22, Math.abs(f.omega) * 0.1);
-        targetSpeed *= 1 - yawCost;
-        targetSpeed = Math.max(targetSpeed, seeking ? 8 : 6);
+        resolveIK(f);
 
-        const accel = seeking ? 2.1 : f.gait === "burst" ? 1.7 : 1.15;
-        f.speed = damp(f.speed, targetSpeed, dt, accel);
-        f.waveGain = damp(f.waveGain, targetGain, dt, 4.5);
-        f.hz = damp(f.hz, targetHz, dt, 3.2);
-        f.phase += dt * TWO_PI * f.hz;
-
-        const align = 1 - Math.exp(-dt * 9);
-        const aligned = course + angWrap(f.heading - course) * align;
-        f.vx = Math.cos(aligned) * f.speed;
-        f.vy = Math.sin(aligned) * f.speed;
-        f.x += f.vx * dt;
-        f.y += f.vy * dt;
-        f.x = clamp(f.x, 14, cssW - 14);
-        f.y = clamp(f.y, 14, cssH - 14);
-
-        const targetBend = clamp(f.omega * 0.45, -0.62, 0.62);
-        f.bendBias = damp(f.bendBias, targetBend, dt, 6.5);
-
-        followSpine(f);
-
-        if (water && f.rippleT <= 0 && f.gait === "burst" && f.speed > 26) {
+        if (water && f.rippleT <= 0 && f.mode === "swim" && f.speed > 26) {
           water.impulse(f.x / cssW, f.y / cssH, 0.07);
-          f.rippleT = 1.1 + rng() * 1.3;
+          f.rippleT = 1.2 + rng() * 1.4;
         }
       }
 
@@ -518,22 +440,6 @@
       void quality;
     }
 
-    function deformSpine(f) {
-      const spine = f.spine;
-      const len = bodyLength(f);
-      const k = 4.55;
-      for (let i = 0; i < spine.length; i++) {
-        const s = i / (spine.length - 1);
-        const a = spine[i].a;
-        const wave = f.waveGain * 0.12 * Math.pow(s, 1.9) * Math.sin(f.phase - s * k);
-        const bend = f.bendBias * (0.12 + 0.88 * s);
-        const lat = (wave + bend * 0.52) * len;
-        spine[i].dx = spine[i].x + -Math.sin(a) * lat;
-        spine[i].dy = spine[i].y + Math.cos(a) * lat;
-        spine[i].da = a + f.waveGain * 0.32 * Math.pow(s, 1.35) * Math.cos(f.phase - s * k) + f.bendBias * 0.5;
-      }
-    }
-
     function drawShadow(f, blur) {
       const spine = f.spine;
       const mid = spine[Math.floor(spine.length * 0.45)] || spine[0];
@@ -550,24 +456,36 @@
       ctx.restore();
     }
 
+    function sampleSpine(spine, t) {
+      const max = spine.length - 1;
+      const u = clamp(t, 0, 1) * max;
+      const i = Math.min(max - 1, u | 0);
+      const f = u - i;
+      const a = spine[i];
+      const b = spine[i + 1];
+      return {
+        x: a.x + (b.x - a.x) * f,
+        y: a.y + (b.y - a.y) * f,
+        a: a.a + angWrap(b.a - a.a) * f,
+      };
+    }
+
     function drawFish(f, slices) {
       const tex = f.sprite.canvas;
-      const n = slices;
+      const n = Math.max(6, slices);
       const bodyW = bodyLength(f);
       const bodyH = bodyW * (tex.height / tex.width);
       const spine = f.spine;
-      const step = (spine.length - 1) / (n - 1);
-      const dw = spacingOf(f) * 2.25;
+      const dw = (bodyW / n) * 2.15;
       ctx.save();
       ctx.globalAlpha = 0.96;
       for (let i = 0; i < n; i++) {
-        const idx = Math.round(i * step);
-        const seg = spine[idx];
+        const seg = sampleSpine(spine, i / (n - 1));
         const sx = tex.width * (1 - (i + 1) / n);
         const sw = tex.width / n;
         ctx.save();
-        ctx.translate(seg.dx, seg.dy);
-        ctx.rotate(seg.da);
+        ctx.translate(seg.x, seg.y);
+        ctx.rotate(seg.a);
         ctx.drawImage(tex, sx, 0, sw, tex.height, -dw * 0.42, -bodyH / 2, dw, bodyH);
         ctx.restore();
       }
@@ -584,7 +502,6 @@
       ctx.clearRect(0, 0, cssW, cssH);
 
       const slices = sliceCount(quality);
-      for (let i = 0; i < fish.length; i++) deformSpine(fish[i]);
       for (let i = 0; i < fish.length; i++) drawShadow(fish[i], quality && quality.blurShadow);
 
       const order = fish.slice().sort(function (a, b) {

@@ -12,6 +12,7 @@
       pads: 3,
       blurShadow: false,
       ambientWaves: 0.55,
+      spineSlices: 6,
       power: "low-power",
     },
     mid: {
@@ -22,6 +23,7 @@
       pads: 5,
       blurShadow: true,
       ambientWaves: 1,
+      spineSlices: 8,
       power: "low-power",
     },
     high: {
@@ -32,6 +34,7 @@
       pads: 7,
       blurShadow: true,
       ambientWaves: 1.15,
+      spineSlices: 10,
       power: "default",
     },
   };

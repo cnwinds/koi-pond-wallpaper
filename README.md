@@ -82,13 +82,25 @@ css/pond.css        极简设置层
 js/config.js        查询参数 / 本地存储 / Lively 属性
 js/water.js         WebGL2 水面与高度场涟漪（失败则 Canvas 2D）
 js/sprites.js       程序化绘制锦鲤与荷叶，无大图包
-js/world.js         闲游、趋食、吃食、粒子
+js/world.js         闲游 / 趋食 / 吃食（Carangiform + Reynolds 转向）
 js/app.js           输入、HUD、帧循环、省电
 LivelyInfo.json     Lively 元数据
 LivelyProperties.json
 ```
 
 以后若做 macOS 菜单栏 / 桌面壳，用 WKWebView 加载同一目录即可，不必重写池塘本身。
+
+## 游动模型
+
+锦鲤是鲤科的 **Carangiform / 亚 Carangiform**：推力主要来自身体后段和尾鳍的行波，头部几乎不左右甩（Sfakiotakis, Lane & Davies, 1999, *IEEE J. Oceanic Eng.*；振幅包络见 Videler, *Fish Swimming*, 1993）。本池用沿脊柱向尾增强的 `A(s)∝s^1.9` 行波，再加上随角速度变化的 C 形弯曲——与锦鲤日常转弯的 stage-1 C-bend 一致（Wu, Yang & Zeng, 2007, *J. Exp. Biol.*）。
+
+路径不用“朝随机点瞬间拧头”，而用 Reynolds（1999）的转向力 `steering = desired − current`：
+
+- **Wander**：身前一个圆上的缓变点，走出连续缓弯，而不是每帧随机力。
+- **Seek / Arrive**：发现鱼食后朝它游，接近时按距离减速，避免冲过头。
+- **Separation + 岸边势**：鱼与鱼、鱼与池边用合力，不用角度硬切。
+
+朝向只走包好的最短角误差，并限制角速度（转弯半径随速度略变）；不用角度线性插值。速度是锦鲤常见的 **burst-and-coast**：打一两次尾就滑行，身体在滑行时几乎伸直（Videler）。画质档只改脊柱切片数（6 / 8 / 10），不改这套力学。
 
 ## 已知限制
 

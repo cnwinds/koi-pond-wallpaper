@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#081614" />
+    <meta name="referrer" content="no-referrer" />
+    <title>锦鲤池 / Koi Pond</title>
+    <meta name="description" content="安静的庭院锦鲤池桌面壁纸。本地打开即可，无需网络。" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect fill='%23081614' width='32' height='32'/%3E%3Cpath fill='%23c4452f' d='M6 17c4-6 16-8 21-2-6 1-12 5-21 2z'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="css/pond.css" />
+  </head>
+  <body>
+    <div id="pond">
+      <canvas id="water" aria-hidden="true"></canvas>
+      <canvas id="life" aria-hidden="true"></canvas>
+    </div>
+
+    <div id="hud">
+      <div id="toast">点击投喂 · click to feed</div>
+      <button id="gear" type="button" aria-expanded="false" aria-controls="panel" title="设置 / Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 8c4-2 8 2 12 0s4-3 4-3" />
+          <path d="M4 13c4-2 8 2 12 0s4-3 4-3" />
+          <path d="M4 18c4-2 8 2 12 0s4-3 4-3" />
+        </svg>
+      </button>
+      <aside id="panel" aria-label="Pond settings">
+        <h1>锦鲤池</h1>
+        <p class="en">quiet pond wallpaper</p>
+        <div class="row">
+          <label for="fishRange">鱼 / fish</label>
+          <output id="fishOut" for="fishRange">7</output>
+          <input id="fishRange" type="range" min="1" max="16" step="1" value="7" />
+        </div>
+        <div class="row">
+          <label for="qualitySelect">画质 / quality</label>
+        </div>
+        <select id="qualitySelect">
+          <option value="low">低 / low</option>
+          <option value="mid" selected>中 / medium</option>
+          <option value="high">高 / high</option>
+        </select>
+        <div class="row">
+          <label for="fpsRange">帧率 / fps</label>
+          <output id="fpsOut" for="fpsRange">30</output>
+          <input id="fpsRange" type="range" min="15" max="60" step="1" value="30" />
+        </div>
+        <p class="hint" id="rendererNote">WebGL2 · mid</p>
+        <p class="hint">切到其它窗口会降帧；标签隐藏时暂停。参数也可写在地址栏：?fish=8&amp;quality=low&amp;fps=24&amp;ui=0</p>
+      </aside>
+    </div>
+
+    <noscript>
+      <p style="color:#e7dfd0;padding:2rem;font-family:Georgia,serif">需要启用 JavaScript 才能看到锦鲤池。</p>
+    </noscript>
+
+    <script src="js/config.js"></script>
+    <script src="js/sprites.js"></script>
+    <script src="js/water.js"></script>
+    <script src="js/world.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>

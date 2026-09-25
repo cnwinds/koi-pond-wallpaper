@@ -1,0 +1,42 @@
+name: Windows release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish zip
+        shell: pwsh
+        run: ./win/package.ps1
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: koi-pond-wallpaper-windows-x64
+          path: dist/koi-pond-wallpaper-windows-x64.zip
+
+      - name: GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/koi-pond-wallpaper-windows-x64.zip
+          name: 锦鲤池 ${{ github.ref_name }}
+          body_path: win/RELEASE_NOTES.md
+          draft: false
+          fail_on_unmatched_files: true

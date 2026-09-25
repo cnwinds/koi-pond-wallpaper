@@ -4,3 +4,8 @@ Thumbs.db
 .idea/
 .vscode/
 node_modules/
+bin/
+obj/
+win/out/
+win/dist/
+dist/

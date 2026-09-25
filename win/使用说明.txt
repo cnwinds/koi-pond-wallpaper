@@ -4,29 +4,30 @@
 下载后如何变成桌面背景
 ----------------------
 1. 解压整个文件夹，不要只抽 exe。
-2. 双击 koi-pond-wallpaper.exe。
-3. 程序会把锦鲤池贴到桌面图标后面（WorkerW / 桌面宿主），不是普通全屏窗口。
-4. 右下角托盘图标：投喂、重新贴到桌面、窗口预览、用 Lively 设壁纸、退出。
-
-若没能贴到图标后面
-------------------
-- 从托盘点「重新贴到桌面」。
-- 或安装免费的 Lively Wallpaper，再双击 exe（会自动拷进 Lively 图库并尝试设为壁纸），也可按仓库 README 手动导入。
-- 需要先看效果时，运行 window-preview.bat，或：koi-pond-wallpaper.exe --window
+2. 双击 koi-pond-wallpaper.exe（或「设为桌面壁纸.bat」）。
+3. 程序会把锦鲤池嵌到桌面图标后面，成为真正的动态壁纸，不是普通全屏窗口。
+4. 右下角托盘：投喂、重新贴到桌面、用 Lively 设壁纸、退出。
 
 系统要求
 --------
 - Windows 10 1809+ 或 Windows 11，64 位
 - Microsoft Edge WebView2 Runtime（Windows 11 一般已自带；Win10 若白屏请安装：
   https://developer.microsoft.com/microsoft-edge/webview2/ ）
-- 不需要再装 .NET（本包是自包含发布）
-- 不需要 Lively；有 Lively 时可作为备选设壁纸方式
+- 不必另装 .NET（本包自包含）
+- 不必安装 Lively。直接贴桌面失败时，可安装免费的 Lively Wallpaper 再运行，
+  程序会尝试写入图库并设为壁纸：
+  https://github.com/rocksdanister/lively/releases
+
+若没能贴到图标后面
+------------------
+程序不会自动改成全屏窗口。会弹出选择：再试一次贴桌面 / 用或安装 Lively / 仅窗口预览 / 退出。
+「窗口预览」只是看效果，不是桌面背景。
 
 命令行
 ------
-（默认）          贴到桌面当动态壁纸
---window / -w     无边框全屏窗口预览
+（默认）          设为桌面动态壁纸
 --lively          优先用本机 Lively 设壁纸
+--window / -w     仅窗口预览（不是桌面背景）
 
 源码 / 浏览器 / 手动 Lively
 ---------------------------

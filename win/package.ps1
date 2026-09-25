@@ -31,6 +31,7 @@ Copy-Item (Join-Path $root "js") (Join-Path $stage "js") -Recurse
 Copy-Item (Join-Path $root "css") (Join-Path $stage "css") -Recurse
 Copy-Item (Join-Path $PSScriptRoot "使用说明.txt") (Join-Path $stage "使用说明.txt")
 Copy-Item (Join-Path $PSScriptRoot "window-preview.bat") (Join-Path $stage "window-preview.bat")
+Copy-Item (Join-Path $PSScriptRoot "设为桌面壁纸.bat") (Join-Path $stage "设为桌面壁纸.bat")
 
 $zip = Join-Path $OutDir "koi-pond-wallpaper-windows-x64.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }

@@ -8,6 +8,8 @@
   const WEATHER_KEY = "koi-pond-weather-v1";
   const REFRESH_MS = 20 * 60 * 1000;
   const STALE_MS = 6 * 60 * 60 * 1000;
+  const GEOJS_URL = "https://get.geojs.io/v1/ip/geo.json";
+  const IPWHO_URL = "https://ipwho.is/";
 
   function clamp(n, a, b) {
     return Math.min(b, Math.max(a, n));
@@ -26,11 +28,148 @@
     return Math.hypot(lat - SHANGHAI.lat, lon - SHANGHAI.lon) < 0.35;
   }
 
-  function placeLabel(lat, lon) {
+  function placeLabel(lat, lon, city) {
     if (nearShanghai(lat, lon)) return SHANGHAI.name;
+    if (city) return city;
     const ns = lat >= 0 ? "N" : "S";
     const ew = lon >= 0 ? "E" : "W";
     return Math.abs(lat).toFixed(2) + "°" + ns + " " + Math.abs(lon).toFixed(2) + "°" + ew;
+  }
+
+  function asPlace(lat, lon, extra) {
+    lat = parseFloat(lat);
+    lon = parseFloat(lon);
+    if (Number.isNaN(lat) || Number.isNaN(lon)) return null;
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+    extra = extra || {};
+    return {
+      lat: lat,
+      lon: lon,
+      tz: extra.tz ? String(extra.tz) : "",
+      city: extra.city ? String(extra.city) : "",
+      source: extra.source || "ip",
+    };
+  }
+
+  function parseGeoJs(json) {
+    if (!json) return null;
+    return asPlace(json.latitude, json.longitude, {
+      tz: json.timezone,
+      city: json.city,
+      source: "ip",
+    });
+  }
+
+  function parseIpwho(json) {
+    if (!json || json.success === false) return null;
+    const tz = json.timezone && (json.timezone.id || json.timezone);
+    return asPlace(json.latitude, json.longitude, {
+      tz: tz,
+      city: json.city,
+      source: "ip",
+    });
+  }
+
+  function fetchJson(fetchFn, url, ms) {
+    if (!fetchFn) return Promise.reject(new Error("fetch"));
+    const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    const opts = { cache: "no-store" };
+    if (ctrl) opts.signal = ctrl.signal;
+    const to = setTimeout(function () {
+      if (ctrl) ctrl.abort();
+    }, ms || 7000);
+    return fetchFn(url, opts)
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error("http");
+        return res.json();
+      })
+      .then(function (json) {
+        clearTimeout(to);
+        return json;
+      })
+      .catch(function (err) {
+        clearTimeout(to);
+        throw err;
+      });
+  }
+
+  function readGps(geolocation, prompt, permissions) {
+    return new Promise(function (resolve) {
+      if (!geolocation || typeof geolocation.getCurrentPosition !== "function") {
+        resolve(null);
+        return;
+      }
+      const go = function () {
+        geolocation.getCurrentPosition(
+          function (pos) {
+            resolve(
+              asPlace(pos.coords.latitude, pos.coords.longitude, { source: "geo" })
+            );
+          },
+          function () {
+            resolve(null);
+          },
+          { enableHighAccuracy: false, maximumAge: 30 * 60 * 1000, timeout: 6000 }
+        );
+      };
+      if (prompt) {
+        go();
+        return;
+      }
+      if (permissions && typeof permissions.query === "function") {
+        permissions
+          .query({ name: "geolocation" })
+          .then(function (status) {
+            if (status && status.state === "granted") go();
+            else resolve(null);
+          })
+          .catch(function () {
+            resolve(null);
+          });
+        return;
+      }
+      resolve(null);
+    });
+  }
+
+  function resolveIp(fetchFn) {
+    return fetchJson(fetchFn, GEOJS_URL, 6500)
+      .then(function (json) {
+        const place = parseGeoJs(json);
+        if (!place) throw new Error("geojs");
+        return place;
+      })
+      .catch(function () {
+        return fetchJson(fetchFn, IPWHO_URL, 6500).then(function (json) {
+          const place = parseIpwho(json);
+          if (!place) throw new Error("ipwho");
+          return place;
+        });
+      });
+  }
+
+  /* GPS if already granted (or prompt=true), else IP (geojs.io, then ipwho.is). */
+  function resolveLocation(opts) {
+    opts = opts || {};
+    return readGps(opts.geolocation, !!opts.prompt, opts.permissions)
+      .then(function (geo) {
+        if (geo) return geo;
+        return resolveIp(opts.fetch);
+      })
+      .catch(function () {
+        return null;
+      });
+  }
+
+  function readLastPlace() {
+    try {
+      const raw = global.localStorage && localStorage.getItem(WEATHER_KEY);
+      if (!raw) return null;
+      const c = JSON.parse(raw);
+      return asPlace(c.lat, c.lon, { tz: c.tz, city: c.city, source: "cache" });
+    } catch (err) {
+      return null;
+    }
   }
 
   function skyFromWmo(code, clouds, vis, precip) {
@@ -142,6 +281,7 @@
       wind: wind,
       windKmh: windKmh,
       source: (weather && weather.source) || "default",
+      placeSource: "default",
       place: placeLabel(lat, lon),
     };
   }
@@ -150,8 +290,16 @@
     const phase = look.dayness > 0.82 ? "昼" : look.dayness > 0.18 ? "晨昏" : "夜";
     const sky =
       look.sky === "clear" ? "晴" : look.sky === "cloudy" ? "阴" : look.sky === "rain" ? "雨" : "雾";
+    const via =
+      look.placeSource === "geo"
+        ? " · 定位"
+        : look.placeSource === "ip"
+          ? " · IP"
+          : look.placeSource === "manual"
+            ? " · 手动"
+            : "";
     const src = look.source === "live" ? "" : look.source === "cache" ? " · 缓存" : " · 离线";
-    return look.place + " · " + sky + " · " + phase + src;
+    return look.place + " · " + sky + " · " + phase + via + src;
   }
 
   function readCache(lat, lon) {
@@ -183,10 +331,15 @@
     let lat = options.lat != null ? options.lat : SHANGHAI.lat;
     let lon = options.lon != null ? options.lon : SHANGHAI.lon;
     let tz = options.tz || SHANGHAI.tz;
+    let placeMode = options.placeMode === "manual" ? "manual" : "auto";
+    let placeSource = options.placeSource || (placeMode === "manual" ? "manual" : "default");
+    let placeName = options.city || "";
     let overrideSky = options.sky || null;
     let weather = readCache(lat, lon) || emptyWeather();
     let fetching = false;
     let timer = 0;
+    let resolveGen = 0;
+    const resolvedListeners = [];
     let cssW = 1;
     let cssH = 1;
     let dpr = 1;
@@ -200,7 +353,11 @@
     }
 
     function sample(date) {
-      return composeLook(lat, lon, date || new Date(), weather, overrideSky);
+      const look = composeLook(lat, lon, date || new Date(), weather, overrideSky);
+      look.placeSource = placeSource;
+      look.placeMode = placeMode;
+      look.place = placeLabel(lat, lon, placeName);
+      return look;
     }
 
     function applyLive(json) {
@@ -218,6 +375,7 @@
         lat: lat,
         lon: lon,
         tz: (json.timezone || tz) + "",
+        city: placeName,
       };
       if (json.timezone) tz = json.timezone;
       writeCache(weather);
@@ -264,35 +422,88 @@
     function setPlace(next) {
       next = next || {};
       let changed = false;
+      let moved = false;
       if (next.lat != null && Math.abs(next.lat - lat) > 0.0001) {
         lat = next.lat;
         changed = true;
+        moved = true;
       }
       if (next.lon != null && Math.abs(next.lon - lon) > 0.0001) {
         lon = next.lon;
         changed = true;
+        moved = true;
       }
       if (next.tz && next.tz !== tz) {
         tz = next.tz;
+        changed = true;
+      }
+      if (next.placeMode === "auto" || next.placeMode === "manual") {
+        if (next.placeMode !== placeMode) {
+          placeMode = next.placeMode;
+          changed = true;
+        }
+      }
+      if (next.source && next.source !== placeSource) {
+        placeSource = next.source;
+        changed = true;
+      }
+      if (Object.prototype.hasOwnProperty.call(next, "city") && (next.city || "") !== placeName) {
+        placeName = next.city || "";
         changed = true;
       }
       if (Object.prototype.hasOwnProperty.call(next, "sky")) {
         overrideSky = next.sky || null;
         changed = true;
       }
+      if (placeMode === "manual") resolveGen += 1;
       if (changed) {
-        const cached = readCache(lat, lon);
-        if (cached) weather = cached;
+        if (moved) {
+          const cached = readCache(lat, lon);
+          if (cached) weather = cached;
+        }
         emit();
-        fetchWeather();
+        if (moved) fetchWeather();
       }
     }
 
-    function start() {
+    function applyResolved(place, gen) {
+      if (!place || gen !== resolveGen) return null;
+      if (placeMode === "manual") return null;
+      setPlace({
+        lat: place.lat,
+        lon: place.lon,
+        tz: place.tz,
+        source: place.source,
+        city: place.city,
+        placeMode: "auto",
+      });
+      for (let i = 0; i < resolvedListeners.length; i++) resolvedListeners[i](place);
+      return place;
+    }
+
+    function resolve(opts) {
+      opts = opts || {};
+      if (placeMode === "manual" && !opts.force) return Promise.resolve(null);
+      if (opts.force) placeMode = "auto";
+      const gen = ++resolveGen;
+      const nav = global.navigator || {};
+      return resolveLocation({
+        prompt: !!opts.prompt,
+        fetch: global.fetch,
+        geolocation: nav.geolocation,
+        permissions: nav.permissions,
+      }).then(function (place) {
+        return applyResolved(place, gen);
+      });
+    }
+
+    function start(opts) {
+      opts = opts || {};
       const fresh = weather.source === "cache" && Date.now() - weather.fetchedAt < REFRESH_MS;
       if (!fresh) fetchWeather();
       if (timer) global.clearInterval(timer);
       timer = global.setInterval(fetchWeather, REFRESH_MS);
+      if (opts.resolve !== false && placeMode === "auto") resolve({ prompt: false });
     }
 
     function stop() {
@@ -390,6 +601,7 @@
         return lookCaption(look || sample());
       },
       setPlace,
+      resolve,
       start,
       stop,
       resize,
@@ -398,8 +610,11 @@
       onChange: function (fn) {
         listeners.push(fn);
       },
+      onResolved: function (fn) {
+        resolvedListeners.push(fn);
+      },
       place: function () {
-        return { lat: lat, lon: lon, tz: tz };
+        return { lat: lat, lon: lon, tz: tz, mode: placeMode, source: placeSource, city: placeName };
       },
     };
   }
@@ -407,9 +622,15 @@
   global.PondClimate = {
     create,
     SHANGHAI,
+    GEOJS_URL,
+    IPWHO_URL,
     sunElevation,
     skyFromWmo,
     composeLook,
     lookCaption,
+    parseGeoJs,
+    parseIpwho,
+    resolveLocation,
+    readLastPlace,
   };
 })(window);

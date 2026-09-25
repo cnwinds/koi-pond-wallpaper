@@ -55,6 +55,9 @@
     lon: 121.4737,
     tz: "Asia/Shanghai",
     sky: null,
+    placeMode: "auto",
+    placeSource: "default",
+    city: "",
   };
 
   const SKY_NAMES = ["clear", "cloudy", "rain", "fog"];
@@ -108,6 +111,9 @@
           lat: state.lat,
           lon: state.lon,
           tz: state.tz,
+          placeMode: state.placeMode,
+          placeSource: state.placeSource,
+          city: state.city,
         })
       );
     } catch (err) {
@@ -141,6 +147,9 @@
       const sky = parseSky(q.get("weather") || q.get("sky"));
       if (sky) next.sky = sky;
     }
+    if (q.has("lat") || q.has("lon")) next.placeMode = "manual";
+    if (q.get("place") === "auto") next.placeMode = "auto";
+    if (q.get("place") === "manual") next.placeMode = "manual";
     return next;
   }
 
@@ -159,6 +168,17 @@
     if (state.lon == null) state.lon = defaults.lon;
     state.tz = state.tz || defaults.tz;
     state.sky = parseSky(state.sky);
+    if (query.placeMode === "manual" || query.placeMode === "auto") {
+      state.placeMode = query.placeMode;
+    } else if (stored.placeMode === "manual" || stored.placeMode === "auto") {
+      state.placeMode = stored.placeMode;
+    } else {
+      const pinned =
+        Math.abs(state.lat - defaults.lat) > 0.0005 || Math.abs(state.lon - defaults.lon) > 0.0005;
+      state.placeMode = pinned ? "manual" : "auto";
+    }
+    state.placeSource = state.placeSource || (state.placeMode === "manual" ? "manual" : "default");
+    state.city = state.city ? String(state.city) : "";
     state.reducedMotion = !!(
       global.matchMedia &&
       global.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -226,6 +246,23 @@
           changed = true;
         }
       }
+      if (partial.placeMode === "auto" || partial.placeMode === "manual") {
+        if (partial.placeMode !== state.placeMode) {
+          state.placeMode = partial.placeMode;
+          changed = true;
+        }
+      }
+      if (partial.placeSource != null && String(partial.placeSource) !== state.placeSource) {
+        state.placeSource = String(partial.placeSource);
+        changed = true;
+      }
+      if (Object.prototype.hasOwnProperty.call(partial, "city")) {
+        const city = partial.city ? String(partial.city) : "";
+        if (city !== state.city) {
+          state.city = city;
+          changed = true;
+        }
+      }
       if (changed) {
         writeStore(state);
         emit(reason || "change");
@@ -238,9 +275,31 @@
       else if (name === "quality") assign({ quality: val }, "lively");
       else if (name === "fps") assign({ fps: val }, "lively");
       else if (name === "showUi") assign({ ui: val }, "lively");
-      else if (name === "lat" || name === "latitude") assign({ lat: val }, "lively");
-      else if (name === "lon" || name === "longitude") assign({ lon: val }, "lively");
-      else if (name === "tz" || name === "timezone") assign({ tz: val }, "lively");
+      else if (name === "lat" || name === "latitude") {
+        const lat = parseCoord(val, -90, 90);
+        if (lat == null) return;
+        const pin = Math.abs(lat - defaults.lat) > 0.0005;
+        assign(
+          {
+            lat: lat,
+            placeMode: pin ? "manual" : state.placeMode,
+            placeSource: pin ? "manual" : state.placeSource,
+          },
+          "lively"
+        );
+      } else if (name === "lon" || name === "longitude") {
+        const lon = parseCoord(val, -180, 180);
+        if (lon == null) return;
+        const pin = Math.abs(lon - defaults.lon) > 0.0005;
+        assign(
+          {
+            lon: lon,
+            placeMode: pin ? "manual" : state.placeMode,
+            placeSource: pin ? "manual" : state.placeSource,
+          },
+          "lively"
+        );
+      } else if (name === "tz" || name === "timezone") assign({ tz: val }, "lively");
     }
 
     function queryString() {
@@ -249,9 +308,10 @@
       q.set("quality", state.quality);
       q.set("fps", String(state.fps));
       q.set("ui", state.ui ? "1" : "0");
-      if (Math.abs(state.lat - defaults.lat) > 0.0001 || Math.abs(state.lon - defaults.lon) > 0.0001) {
+      if (state.placeMode === "manual") {
         q.set("lat", state.lat.toFixed(4));
         q.set("lon", state.lon.toFixed(4));
+        q.set("place", "manual");
       }
       if (state.sky) q.set("weather", state.sky);
       return q.toString();

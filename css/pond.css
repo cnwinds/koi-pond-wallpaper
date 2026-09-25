@@ -36,8 +36,13 @@ body {
   display: block;
 }
 
-#life {
+#life,
+#wx {
   pointer-events: none;
+}
+
+#wx {
+  z-index: 2;
 }
 
 #hud {
@@ -86,7 +91,7 @@ body {
   position: absolute;
   right: 16px;
   bottom: 62px;
-  width: min(260px, calc(100vw - 28px));
+  width: min(280px, calc(100vw - 28px));
   padding: 16px 16px 14px;
   background: var(--moss);
   border: 1px solid var(--line);
@@ -150,15 +155,48 @@ body {
   accent-color: #c4b49a;
 }
 
-#panel select {
-  grid-column: 1 / -1;
-  width: 100%;
+#panel select,
+#panel input[type="number"] {
   background: rgba(8, 16, 14, 0.45);
   color: var(--ink);
   border: 1px solid var(--line);
   border-radius: 2px;
   padding: 5px 6px;
   font: inherit;
+}
+
+#panel select {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+#panel input[type="number"] {
+  width: 6.4em;
+  text-align: right;
+}
+
+#panel .actions {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 2px;
+}
+
+#panel .actions button {
+  flex: 1;
+  background: rgba(8, 16, 14, 0.45);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 5px 6px;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+#panel .actions button:hover,
+#panel .actions button:focus-visible {
+  border-color: rgba(231, 223, 208, 0.32);
 }
 
 #panel .hint {

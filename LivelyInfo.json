@@ -3,7 +3,7 @@
   "Title": "Koi Pond / 锦鲤池",
   "Thumbnail": "thumbnail.png",
   "Preview": "thumbnail.png",
-  "Desc": "A quiet zen koi pond. Click the water to drop food. Offline WebGL wallpaper.",
+  "Desc": "A quiet zen koi pond. Click the water to drop food. Offline WebGL wallpaper, with optional live weather.",
   "Author": "cnwinds",
   "License": "MIT",
   "Contact": "https://github.com/cnwinds/koi-pond-wallpaper",

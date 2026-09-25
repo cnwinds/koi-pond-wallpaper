@@ -301,7 +301,7 @@
       }
     }
 
-    function update(dt, water, quality) {
+    function update(dt, water, quality, climate) {
       const calm = reducedMotion();
       clock += dt;
       for (let i = food.length - 1; i >= 0; i--) {
@@ -317,8 +317,12 @@
 
       assignSeekers();
 
-      const currentX = (Math.sin(clock * 0.021) * 3.2 + Math.sin(clock * 0.013 + 2) * 2.2) * (calm ? 0.35 : 1);
-      const currentY = (Math.cos(clock * 0.017 + 1) * 2.6 + Math.sin(clock * 0.011 + 4) * 1.8) * (calm ? 0.35 : 1);
+      const windX = climate && climate.wind ? climate.wind.x : 0;
+      const windY = climate && climate.wind ? climate.wind.y : 0;
+      const currentX =
+        (Math.sin(clock * 0.021) * 3.2 + Math.sin(clock * 0.013 + 2) * 2.2) * (calm ? 0.35 : 1) + windX;
+      const currentY =
+        (Math.cos(clock * 0.017 + 1) * 2.6 + Math.sin(clock * 0.011 + 4) * 1.8) * (calm ? 0.35 : 1) + windY;
 
       for (let i = 0; i < fish.length; i++) {
         const f = fish[i];

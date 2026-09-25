@@ -32,5 +32,17 @@
     "type": "checkbox",
     "value": true,
     "text": "Show settings gear"
+  },
+  "lat": {
+    "type": "textbox",
+    "value": "31.2304",
+    "text": "Latitude",
+    "help": "Pin weather/sun. Leave the Shanghai default to auto-detect (GPS if granted, else IP, else Shanghai)."
+  },
+  "lon": {
+    "type": "textbox",
+    "value": "121.4737",
+    "text": "Longitude",
+    "help": "Pin weather/sun. Leave the Shanghai default to auto-detect."
   }
 }

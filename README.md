@@ -82,13 +82,29 @@ css/pond.css        极简设置层
 js/config.js        查询参数 / 本地存储 / Lively 属性
 js/water.js         WebGL2 水面与高度场涟漪（失败则 Canvas 2D）
 js/sprites.js       程序化绘制锦鲤与荷叶，无大图包
-js/world.js         闲游、趋食、吃食、粒子
+js/world.js         闲游 / 趋食 / IK 脊柱（koi.rest 类运动模型，重实现）
 js/app.js           输入、HUD、帧循环、省电
 LivelyInfo.json     Lively 元数据
 LivelyProperties.json
 ```
 
 以后若做 macOS 菜单栏 / 桌面壳，用 WKWebView 加载同一目录即可，不必重写池塘本身。
+
+## 游动模型
+
+游动按同一类运动模型**重新实现**，灵感来自 [koi.rest](https://koi.rest/) 公开客户端里的锦鲤更新循环和 IK 脊柱思路，并加上常见的 wander、转向叠加和 IK follow-chain。没有逐字复制第三方源码。
+
+- **swim / idle**：巡游时偶尔歇几秒；吃食后也会短暂停一下。
+- **targetHeading**：大约每隔 1–2.5 秒才改一次目标航向，并加随机角偏移，而不是每帧随机拧头。
+- **转向叠加**：靠近池边时轻轻往里推，鱼与鱼之间软分离，再和 wander 目标航向混合。
+- **转弯半径**：角速度按速度 / 体长封顶，巡游时转弯半径大约不小于 0.85 倍体长，避免原地打转或月牙形卷曲。鱼是游过弯，不是绕着头做皮鲁埃特。
+- **速度**：巡航速度有缓慢噪声调制，加减速有上限，没有瞬间跳速。
+- **推进摆动**：前进方向加很小的正弦摆；尾拍频率随速度 / 体长变化。
+- **身体**：每帧从头部解一条 IK 关节链，单关节角和整条脊柱累计弯曲都有上限；体波来自身体落后于头的轨迹，不再往关节上叠额外正弦（否则尾巴会原地扇）。
+
+趋食仍是点击投喂：最多 3 条鱼去吃，靠近时 arrive 减速，并略微放松转弯半径，以免鱼食落在不可达的转弯圆里。画质档只改脊柱切片数（6 / 8 / 10），不改这套力学。
+
+生物学背景仍参考鲤科 **Carangiform / 亚 Carangiform** 推进（Sfakiotakis, Lane & Davies, 1999；Videler, *Fish Swimming*, 1993）以及锦鲤日常转弯的 C-bend（Wu, Yang & Zeng, 2007）。Reynolds（1999）的 wander / seek / separation 用来理解转向叠加，而不是再做一套每帧随机力。
 
 ## 已知限制
 

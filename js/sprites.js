@@ -26,12 +26,12 @@
     const belly = h * 0.26;
     ctx.beginPath();
     ctx.moveTo(noseX, cy);
-    ctx.bezierCurveTo(w * 0.84, cy - belly * 0.35, w * 0.7, cy - belly * 0.78, w * 0.5, cy - belly);
-    ctx.bezierCurveTo(w * 0.34, cy - belly * 0.95, w * 0.22, cy - belly * 0.55, tailX + w * 0.04, cy - h * 0.05);
+    ctx.bezierCurveTo(w * 0.84, cy - belly * 0.28, w * 0.74, cy - belly * 0.92, w * 0.62, cy - belly);
+    ctx.bezierCurveTo(w * 0.46, cy - belly * 0.98, w * 0.26, cy - belly * 0.52, tailX + w * 0.04, cy - h * 0.05);
     ctx.lineTo(tailX, cy);
     ctx.lineTo(tailX + w * 0.04, cy + h * 0.05);
-    ctx.bezierCurveTo(w * 0.22, cy + belly * 0.55, w * 0.34, cy + belly * 0.95, w * 0.5, cy + belly);
-    ctx.bezierCurveTo(w * 0.7, cy + belly * 0.78, w * 0.84, cy + belly * 0.35, noseX, cy);
+    ctx.bezierCurveTo(w * 0.26, cy + belly * 0.52, w * 0.46, cy + belly * 0.98, w * 0.62, cy + belly);
+    ctx.bezierCurveTo(w * 0.74, cy + belly * 0.92, w * 0.84, cy + belly * 0.28, noseX, cy);
     ctx.closePath();
   }
 

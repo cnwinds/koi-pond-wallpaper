@@ -2,11 +2,22 @@
 
 安静的庭院锦鲤池，做成可离线打开的本地网页，适合整天挂在桌面上。气质接近 [koi.rest](https://koi.rest/)：平静的水面、慢慢游的锦鲤，**不是**小游戏 HUD。
 
-Windows 上可用 [Lively Wallpaper](https://github.com/rocksdanister/lively) 设为动态壁纸；也可以用浏览器全屏。核心是纯 Web，以后若要做 macOS 外壳，可以再包一层，这一版不做原生壳。
+Windows 上可下载 [Release](https://github.com/cnwinds/koi-pond-wallpaper/releases) 里的 zip，双击 `koi-pond-wallpaper.exe` **直接设为桌面动态壁纸**（贴在图标后面）。也可以继续用 [Lively Wallpaper](https://github.com/rocksdanister/lively) 导入源码文件夹，或用浏览器全屏。核心仍是纯 Web；macOS 外壳以后再说。
 
 点击或点按水面会投下鱼食，附近的鱼游过去吃，并带起涟漪。
 
-## 快速开始
+## Windows：下载并设为桌面背景
+
+1. 打开 [Releases](https://github.com/cnwinds/koi-pond-wallpaper/releases/latest)，下载 `koi-pond-wallpaper-windows-x64.zip`。
+2. 解压到固定目录（不要只抽 exe，网页文件要和 exe 在一起）。
+3. 双击 `koi-pond-wallpaper.exe`。池塘会贴到**桌面图标后面**，不是普通全屏窗口。
+4. 右下角托盘：投喂、重新贴到桌面、窗口预览、用 Lively 设壁纸、退出。
+
+要求：Windows 10 1809+ / 11（64 位），[WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)（Win11 通常已有）。不必另装 .NET，也不必安装 Lively。白屏时先装 / 修复 WebView2。
+
+备选：`--window` 或 `window-preview.bat` 只做窗口预览；`--lively` 在已安装 Lively 时走 Lively 设壁纸。手动 Lively 导入见下一节。本地构建：`win/package.ps1`（Windows）或装好 .NET 8 后 `bash win/package.sh`。CI 在打 `v*` tag 时用 `windows-latest` 打包并挂到 Release。
+
+## 快速开始（源码 / 浏览器）
 
 不需要构建、不需要安装 Node、不需要网络。入口是仓库根目录的 `index.html`。
 
@@ -85,6 +96,8 @@ js/sprites.js       程序化绘制锦鲤与荷叶，无大图包
 js/world.js         闲游 / 趋食 / IK 脊柱（koi.rest 类运动模型，重实现）
 js/climate.js       真实日夜、Open-Meteo 天气、缓存与覆盖层
 js/app.js           输入、HUD、帧循环、省电
+win/                WebView2 桌面宿主（默认贴到图标后）
+.github/workflows/windows-release.yml
 LivelyInfo.json     Lively 元数据
 LivelyProperties.json
 ```
@@ -130,7 +143,7 @@ LivelyProperties.json
 
 - 最好有 WebGL2。没有时会退回较简单的 Canvas 2D 水面，鱼和投喂仍可用。
 - 本机离线即可看鱼。天气需要网络；失败不影响游动。没有「在线人数 = 鱼数」。
-- 这一版没有 macOS 原生外壳。
+- 没有 macOS 原生外壳。Windows 有 WebView2 桌面宿主；个别 Win11 版本上贴桌面可能失败，可用托盘重试或 Lively。
 - Lively 里若不能点击，先检查壁纸交互是否打开，以及是否被全屏窗口盖住。
 - 4K + 高画质 + 60 FPS 会明显更耗电，壁纸建议维持 24–30 FPS。
 - 部分浏览器会自行节流后台标签，这是预期行为。

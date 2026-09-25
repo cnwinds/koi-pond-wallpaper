@@ -117,7 +117,12 @@ LivelyProperties.json
 - **天气**：在线时向 [Open-Meteo](https://open-meteo.com/) 拉当前天气（不用 API key），映射为晴 / 阴 / 雨 / 雾。雨天有稀疏雨丝和偶尔的水面点滴；雾天对比更软。风力会轻轻推涟漪和环境流。
 - **刷新**：大约每 20 分钟拉一次，结果写入 `localStorage`。不会每帧请求。
 - **离线**：鱼、水、投喂、日夜都照常工作。天气请求失败时用上次缓存；没有缓存就按晴天处理，界面提示「离线」。
-- **改地点**：齿轮面板填纬度 / 经度；地址栏 `?lat=35.68&lon=139.69`；Lively 自定义里同样有 lat / lon。可选 `?weather=rain`（或 `clear` / `cloudy` / `fog`）只预览天气，不写进缓存。
+- **地点优先级**（不挡启动：先用上海或上次坐标出画面，解析成功后再升级）：
+  1. 浏览器定位，且仅在**已经授权**时自动用；第一次要精确位置请点齿轮里的「定位 / locate」，可拒绝。
+  2. 否则用 IP 粗定位：[geojs.io](https://www.geojs.io/)（`https://get.geojs.io/v1/ip/geo.json`），失败再试 [ipwho.is](https://ipwho.is/)。都不用 API key，失败就当没这步。
+  3. 再否则默认上海（`31.2304, 121.4737`，`Asia/Shanghai`）。
+- **手动钉住**：齿轮里改纬度 / 经度；地址栏 `?lat=35.68&lon=139.69`；Lively 自定义填了非默认的 lat / lon。点「自动 / auto」或 `?place=auto` 可回到上面的自动顺序。Lively 若保持默认上海坐标，仍会走自动解析。
+- 可选 `?weather=rain`（或 `clear` / `cloudy` / `fog`）只预览天气，不写进缓存。
 
 没有网络时池塘仍然是完整壁纸，只是不会更新实时云雨。
 

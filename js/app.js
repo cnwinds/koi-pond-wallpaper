@@ -15,6 +15,8 @@
   const fpsOut = document.getElementById("fpsOut");
   const latInput = document.getElementById("latInput");
   const lonInput = document.getElementById("lonInput");
+  const placeAutoBtn = document.getElementById("placeAutoBtn");
+  const placeGeoBtn = document.getElementById("placeGeoBtn");
   const skyNote = document.getElementById("skyNote");
   const rendererNote = document.getElementById("rendererNote");
 
@@ -27,6 +29,9 @@
     lon: config.state.lon,
     tz: config.state.tz,
     sky: config.state.sky,
+    placeMode: config.state.placeMode,
+    placeSource: config.state.placeSource,
+    city: config.state.city,
   });
 
   let cssW = 1;
@@ -219,10 +224,24 @@
     function commitPlace() {
       const lat = parseFloat(latInput && latInput.value);
       const lon = parseFloat(lonInput && lonInput.value);
-      config.assign({ lat: lat, lon: lon }, "ui");
+      config.assign({ lat: lat, lon: lon, placeMode: "manual", placeSource: "manual", city: "" }, "ui");
     }
     if (latInput) latInput.addEventListener("change", commitPlace);
     if (lonInput) lonInput.addEventListener("change", commitPlace);
+    if (placeAutoBtn) {
+      placeAutoBtn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        config.assign({ placeMode: "auto" }, "ui");
+        climate.resolve({ prompt: false, force: true });
+      });
+    }
+    if (placeGeoBtn) {
+      placeGeoBtn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        config.assign({ placeMode: "auto" }, "ui");
+        climate.resolve({ prompt: true, force: true });
+      });
+    }
     if (panel) {
       panel.addEventListener("click", function (ev) {
         ev.stopPropagation();
@@ -250,7 +269,15 @@
 
   config.onChange(function (state, reason) {
     applyWorldSettings();
-    climate.setPlace({ lat: state.lat, lon: state.lon, tz: state.tz, sky: state.sky });
+    climate.setPlace({
+      lat: state.lat,
+      lon: state.lon,
+      tz: state.tz,
+      sky: state.sky,
+      placeMode: state.placeMode,
+      source: state.placeSource,
+      city: state.city,
+    });
     syncHud();
     if (reason === "ui" || reason === "change") {
       try {
@@ -266,7 +293,7 @@
     if (hiddenPause) {
       last = 0;
     } else {
-      climate.start();
+      climate.start({ resolve: false });
     }
   });
 
@@ -308,6 +335,22 @@
 
   climate.onChange(function () {
     if (skyNote) skyNote.textContent = climate.caption();
+  });
+
+  climate.onResolved(function (place) {
+    if (!place || config.state.placeMode === "manual") return;
+    config.assign(
+      {
+        lat: place.lat,
+        lon: place.lon,
+        tz: place.tz || config.state.tz,
+        placeMode: "auto",
+        placeSource: place.source,
+        city: place.city || "",
+      },
+      "resolve"
+    );
+    syncHud();
   });
 
   global.KoiPond = {

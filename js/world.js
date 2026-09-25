@@ -33,22 +33,11 @@
 
     function makeFish(sprite) {
       const p = pondPoint();
-      const size = 0.88 + rng() * 0.55;
-      const angle = rng() * Math.PI * 2;
-      const segs = [];
-      const n = 10;
-      const spacing0 = 14 * size;
-      for (let i = 0; i < n; i++) {
-        segs.push({
-          x: p.x - Math.cos(angle) * i * spacing0,
-          y: p.y - Math.sin(angle) * i * spacing0,
-          a: angle,
-        });
-      }
+      const size = 0.92 + rng() * 0.5;
       return {
         x: p.x,
         y: p.y,
-        angle: angle,
+        angle: rng() * Math.PI * 2,
         speed: 0,
         cruise: 16 + rng() * 18,
         boost: 52 + rng() * 28,
@@ -58,7 +47,6 @@
         greed: 0.32 + rng() * 0.68,
         vision: 220 + rng() * 260,
         sprite: sprite || sprites.koi[(rng() * sprites.koi.length) | 0],
-        segs,
         target: pondPoint(),
         food: null,
         eatT: 0,
@@ -245,32 +233,10 @@
           }
         }
 
-        const sway = Math.sin(f.phase) * 0.16;
         f.x += Math.cos(f.angle) * f.speed * dt;
         f.y += Math.sin(f.angle) * f.speed * dt;
         f.x = clamp(f.x, 8, cssW - 8);
         f.y = clamp(f.y, 8, cssH - 8);
-
-        const segs = f.segs;
-        segs[0].x = f.x;
-        segs[0].y = f.y;
-        segs[0].a = f.angle + sway;
-        const spacing = 14 * f.size;
-        for (let s = 1; s < segs.length; s++) {
-          const prev = segs[s - 1];
-          const cur = segs[s];
-          let dx = cur.x - prev.x;
-          let dy = cur.y - prev.y;
-          let dist = Math.hypot(dx, dy) || 0.001;
-          const wave = Math.sin(f.phase - s * 0.46) * 2.2 * f.size * (s / segs.length);
-          const px = -Math.sin(prev.a) * wave;
-          const py = Math.cos(prev.a) * wave;
-          cur.x = prev.x - (dx / dist) * spacing + px * 0.15;
-          cur.y = prev.y - (dy / dist) * spacing + py * 0.15;
-          dx = prev.x - cur.x;
-          dy = prev.y - cur.y;
-          cur.a = Math.atan2(dy, dx);
-        }
 
         if (water && f.rippleT <= 0 && f.speed > 28) {
           water.impulse(f.x / cssW, f.y / cssH, 0.08);
@@ -311,14 +277,18 @@
     }
 
     function drawShadow(f, blur) {
+      const along = 46 * f.size;
       ctx.save();
-      ctx.translate(f.x + 8, f.y + 12);
+      ctx.translate(
+        f.x - Math.cos(f.angle) * along + 10,
+        f.y - Math.sin(f.angle) * along + 14
+      );
       ctx.rotate(f.angle);
-      ctx.scale(1, 0.38);
+      ctx.scale(1, 0.4);
       if (blur) ctx.filter = "blur(7px)";
-      ctx.fillStyle = "rgba(0, 18, 14, 0.26)";
+      ctx.fillStyle = "rgba(0, 18, 14, 0.28)";
       ctx.beginPath();
-      ctx.ellipse(0, 0, 52 * f.size, 22 * f.size, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, 58 * f.size, 24 * f.size, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.filter = "none";
       ctx.restore();
@@ -326,22 +296,15 @@
 
     function drawFish(f) {
       const tex = f.sprite.canvas;
-      const segs = f.segs;
-      const n = segs.length;
+      const w = 168 * f.size;
+      const h = w * (tex.height / tex.width);
+      const wag = Math.sin(f.phase) * (f.eatT > 0 ? 0.04 : 0.15);
       ctx.save();
-      ctx.globalAlpha = 0.94;
-      for (let i = 0; i < n; i++) {
-        const seg = segs[i];
-        const sx = tex.width * (1 - (i + 1) / n);
-        const sw = tex.width / n;
-        const dw = 20 * f.size;
-        const dh = 74 * f.size;
-        ctx.save();
-        ctx.translate(seg.x, seg.y);
-        ctx.rotate(seg.a);
-        ctx.drawImage(tex, sx, 0, sw, tex.height, -dw * 0.15, -dh / 2, dw * 1.15, dh);
-        ctx.restore();
-      }
+      ctx.globalAlpha = 0.96;
+      ctx.translate(f.x, f.y);
+      ctx.rotate(f.angle);
+      ctx.transform(1, wag, 0, 1, 0, 0);
+      ctx.drawImage(tex, -w * 0.86, -h / 2, w, h);
       ctx.restore();
     }
 
@@ -375,7 +338,7 @@
       for (let i = 0; i < pads.length; i++) {
         const pad = pads[i];
         const s = pad.sprite;
-        const w = 118 * pad.scale;
+        const w = 148 * pad.scale;
         ctx.save();
         ctx.globalAlpha = 0.88;
         ctx.translate(pad.x, pad.y);

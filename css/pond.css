@@ -25,6 +25,7 @@ body {
   position: fixed;
   inset: 0;
   cursor: default;
+  background: radial-gradient(ellipse at 50% 42%, #1b5348 0%, #123830 50%, #0a221e 100%);
 }
 
 #pond canvas {

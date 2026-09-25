@@ -21,17 +21,17 @@
 
   function bodyPath(ctx, w, h) {
     const cy = h * 0.5;
-    const noseX = w * 0.9;
-    const tailX = w * 0.1;
-    const belly = h * 0.22;
+    const noseX = w * 0.91;
+    const tailX = w * 0.12;
+    const belly = h * 0.26;
     ctx.beginPath();
     ctx.moveTo(noseX, cy);
-    ctx.bezierCurveTo(w * 0.78, cy - belly * 0.55, w * 0.58, cy - belly, w * 0.38, cy - belly * 0.92);
-    ctx.bezierCurveTo(w * 0.24, cy - belly * 0.7, w * 0.16, cy - belly * 0.35, tailX + w * 0.06, cy - h * 0.04);
+    ctx.bezierCurveTo(w * 0.84, cy - belly * 0.35, w * 0.7, cy - belly * 0.78, w * 0.5, cy - belly);
+    ctx.bezierCurveTo(w * 0.34, cy - belly * 0.95, w * 0.22, cy - belly * 0.55, tailX + w * 0.04, cy - h * 0.05);
     ctx.lineTo(tailX, cy);
-    ctx.lineTo(tailX + w * 0.06, cy + h * 0.04);
-    ctx.bezierCurveTo(w * 0.16, cy + belly * 0.35, w * 0.24, cy + belly * 0.7, w * 0.38, cy + belly * 0.92);
-    ctx.bezierCurveTo(w * 0.58, cy + belly, w * 0.78, cy + belly * 0.55, noseX, cy);
+    ctx.lineTo(tailX + w * 0.04, cy + h * 0.05);
+    ctx.bezierCurveTo(w * 0.22, cy + belly * 0.55, w * 0.34, cy + belly * 0.95, w * 0.5, cy + belly);
+    ctx.bezierCurveTo(w * 0.7, cy + belly * 0.78, w * 0.84, cy + belly * 0.35, noseX, cy);
     ctx.closePath();
   }
 
@@ -139,15 +139,15 @@
     ctx.fillStyle = sheen;
     ctx.fillRect(0, 0, width, height);
 
-    const blobs = 4 + ((rng() * 5) | 0);
+    const blobs = 3 + ((rng() * 3) | 0);
     for (let i = 0; i < blobs; i++) {
       const color = pick(rng, pal.pattern);
       splat(
         ctx,
-        lerp(width * 0.22, width * 0.82, rng()),
-        lerp(height * 0.28, height * 0.72, rng()),
-        width * (0.08 + rng() * 0.16),
-        height * (0.1 + rng() * 0.2),
+        lerp(width * 0.28, width * 0.78, rng()),
+        lerp(height * 0.32, height * 0.68, rng()),
+        width * (0.12 + rng() * 0.18),
+        height * (0.16 + rng() * 0.22),
         color,
         rng
       );

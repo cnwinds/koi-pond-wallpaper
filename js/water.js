@@ -104,10 +104,10 @@ void main() {
   float radial = length(d);
   float depth = 1.0 - smoothstep(0.05, 0.78, radial);
 
-  vec3 deep = vec3(0.035, 0.11, 0.105);
-  vec3 mid = vec3(0.07, 0.24, 0.21);
-  vec3 shallow = vec3(0.14, 0.36, 0.29);
-  vec3 floorCol = mix(deep, mix(mid, shallow, depth), 0.82);
+  vec3 deep = vec3(0.045, 0.15, 0.145);
+  vec3 mid = vec3(0.08, 0.28, 0.25);
+  vec3 shallow = vec3(0.15, 0.40, 0.33);
+  vec3 floorCol = mix(deep, mix(mid, shallow, depth), 0.86);
 
   float peb = noise(refr * vec2(aspect, 1.0) * 22.0);
   floorCol += vec3(0.018, 0.024, 0.016) * peb;
@@ -116,7 +116,7 @@ void main() {
   if (uCaustics > 0.5) {
     float cau = caustic(refr * vec2(aspect, 1.0) + n.xy * 0.8, uTime);
     float cau2 = caustic(refr.yx * vec2(1.0, aspect) * 0.85 - n.xy * 0.4, uTime * 0.82 + 12.0);
-    floorCol += vec3(0.42, 0.55, 0.34) * (cau * 0.28 + cau2 * 0.16) * (0.45 + 0.55 * depth);
+    floorCol += vec3(0.48, 0.64, 0.40) * (cau * 0.32 + cau2 * 0.18) * (0.5 + 0.5 * depth);
   }
 
   float day = sin(uTime * 0.008);
@@ -133,11 +133,12 @@ void main() {
   float edge = smoothstep(0.46, 0.72, max(abs(uv.x - 0.5), abs(uv.y - 0.5)));
   water = mix(water, vec3(0.045, 0.07, 0.05), edge * 0.38);
 
-  float vig = smoothstep(1.15, 0.28, length((uv - 0.5) * vec2(1.35, 1.2)));
-  water *= 0.58 + 0.42 * vig;
+  float vig = smoothstep(1.2, 0.22, length((uv - 0.5) * vec2(1.25, 1.12)));
+  water *= 0.78 + 0.22 * vig;
+  water = max(water, vec3(0.05, 0.12, 0.11));
 
   float grain = fract(sin(dot(uv * uResolution + uTime * 12.0, vec2(12.9898, 78.233))) * 43758.5453);
-  water += (grain - 0.5) * 0.018;
+  water += (grain - 0.5) * 0.012;
 
   fragColor = vec4(water, 1.0);
 }`;
@@ -209,7 +210,7 @@ void main() {
       stencil: false,
       premultipliedAlpha: false,
       powerPreference: quality.power || "low-power",
-      preserveDrawingBuffer: false,
+      preserveDrawingBuffer: true,
     });
     if (!gl) return null;
 
@@ -369,9 +370,9 @@ void main() {
         t = time;
         ctx.setTransform(pixelW / cssW, 0, 0, pixelH / cssH, 0, 0);
         const g = ctx.createRadialGradient(cssW * 0.5, cssH * 0.42, cssH * 0.05, cssW * 0.5, cssH * 0.5, Math.max(cssW, cssH) * 0.72);
-        g.addColorStop(0, "#1b5a50");
-        g.addColorStop(0.45, "#123f38");
-        g.addColorStop(1, "#0a221f");
+        g.addColorStop(0, "#2a7a68");
+        g.addColorStop(0.42, "#1b564b");
+        g.addColorStop(1, "#0e2f2a");
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, cssW, cssH);
 

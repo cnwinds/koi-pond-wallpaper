@@ -56,11 +56,11 @@ body {
   height: 36px;
   border: 1px solid var(--line);
   border-radius: 50%;
-  background: rgba(10, 20, 18, 0.28);
+  background: rgba(10, 20, 18, 0.4);
   color: var(--ink);
   display: grid;
   place-items: center;
-  opacity: 0.28;
+  opacity: 0.55;
   transition: opacity 240ms ease;
   cursor: pointer;
   padding: 0;

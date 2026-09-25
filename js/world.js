@@ -148,7 +148,7 @@
           y: y + (rng() - 0.5) * 18,
           vx: (rng() - 0.5) * 12,
           vy: (rng() - 0.5) * 10,
-          r: 2.2 + rng() * 1.4,
+          r: 3.1 + rng() * 1.6,
           bob: rng() * Math.PI * 2,
           life: 18 + rng() * 8,
           eaten: false,

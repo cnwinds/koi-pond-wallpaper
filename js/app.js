@@ -230,6 +230,11 @@
   });
   global.addEventListener("resize", resize);
   document.addEventListener("pointerdown", onPointer);
+  document.addEventListener("pointermove", function (ev) {
+    if (!hud || !config.state.ui) return;
+    const near = ev.clientX > cssW - 90 && ev.clientY > cssH - 90;
+    hud.classList.toggle("is-peek", near);
+  });
 
   document.addEventListener("keydown", function (ev) {
     if (ev.key === "Escape") togglePanel(false);

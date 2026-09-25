@@ -1,5 +1,8 @@
 /* WebGL2 pond water with height-field ripples and soft caustics. Canvas 2D fallback. */
 (function (global) {
+  function clamp255(n) {
+    return Math.min(255, Math.max(0, n));
+  }
   const SIM_VS = `#version 300 es
 in vec2 aPos;
 out vec2 vUv;
@@ -55,6 +58,10 @@ uniform vec2 uRippleTexel;
 uniform float uTime;
 uniform float uCaustics;
 uniform float uAmbient;
+uniform float uExposure;
+uniform vec3 uTint;
+uniform float uCausticGain;
+uniform float uHaze;
 
 vec2 hash22(vec2 p) {
   p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
@@ -116,18 +123,15 @@ void main() {
   if (uCaustics > 0.5) {
     float cau = caustic(refr * vec2(aspect, 1.0) + n.xy * 0.8, uTime);
     float cau2 = caustic(refr.yx * vec2(1.0, aspect) * 0.85 - n.xy * 0.4, uTime * 0.82 + 12.0);
-    floorCol += vec3(0.48, 0.64, 0.40) * (cau * 0.32 + cau2 * 0.18) * (0.5 + 0.5 * depth);
+    floorCol += vec3(0.48, 0.64, 0.40) * (cau * 0.32 + cau2 * 0.18) * (0.5 + 0.5 * depth) * uCausticGain;
   }
-
-  float day = sin(uTime * 0.008);
-  floorCol *= mix(vec3(0.94, 1.0, 1.03), vec3(1.04, 1.0, 0.93), day * 0.5 + 0.5);
 
   vec3 water = floorCol * vec3(0.78, 0.96, 0.93);
 
   vec3 L = normalize(vec3(-0.35, 0.48, 0.8));
   vec3 H = normalize(L + vec3(0.0, 0.0, 1.0));
   float spec = pow(max(dot(n, H), 0.0), 72.0);
-  water += vec3(0.72, 0.86, 0.8) * spec * 0.48;
+  water += vec3(0.72, 0.86, 0.8) * spec * 0.48 * (0.22 + 0.78 * uCausticGain);
   water += vec3(0.55, 0.7, 0.66) * smoothstep(0.06, 0.22, abs(h)) * 0.14;
 
   float edge = smoothstep(0.46, 0.72, max(abs(uv.x - 0.5), abs(uv.y - 0.5)));
@@ -139,6 +143,9 @@ void main() {
 
   float grain = fract(sin(dot(uv * uResolution + uTime * 12.0, vec2(12.9898, 78.233))) * 43758.5453);
   water += (grain - 0.5) * 0.012;
+
+  water *= uTint * uExposure;
+  water = mix(water, vec3(0.44, 0.54, 0.56) * uExposure, clamp(uHaze, 0.0, 0.65));
 
   fragColor = vec4(water, 1.0);
 }`;
@@ -252,6 +259,10 @@ void main() {
       uTime: gl.getUniformLocation(waterProg, "uTime"),
       uCaustics: gl.getUniformLocation(waterProg, "uCaustics"),
       uAmbient: gl.getUniformLocation(waterProg, "uAmbient"),
+      uExposure: gl.getUniformLocation(waterProg, "uExposure"),
+      uTint: gl.getUniformLocation(waterProg, "uTint"),
+      uCausticGain: gl.getUniformLocation(waterProg, "uCausticGain"),
+      uHaze: gl.getUniformLocation(waterProg, "uHaze"),
     };
 
     let curr = null;
@@ -330,6 +341,7 @@ void main() {
     }
 
     function render(cssW, cssH, pixelW, pixelH, time, opts) {
+      opts = opts || {};
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, pixelW, pixelH);
       gl.useProgram(waterProg);
@@ -340,7 +352,12 @@ void main() {
       gl.uniform2f(water.uRippleTexel, 1 / simW, 1 / simH);
       gl.uniform1f(water.uTime, time);
       gl.uniform1f(water.uCaustics, opts.caustics ? 1 : 0);
-      gl.uniform1f(water.uAmbient, opts.ambient);
+      gl.uniform1f(water.uAmbient, opts.ambient != null ? opts.ambient : 1);
+      gl.uniform1f(water.uExposure, opts.exposure != null ? opts.exposure : 1);
+      const tint = opts.tint || [1, 1, 1];
+      gl.uniform3f(water.uTint, tint[0], tint[1], tint[2]);
+      gl.uniform1f(water.uCausticGain, opts.causticGain != null ? opts.causticGain : 1);
+      gl.uniform1f(water.uHaze, opts.haze != null ? opts.haze : 0);
       drawQuad(waterProg);
     }
 
@@ -367,6 +384,7 @@ void main() {
       step: function () {},
       rebuild: function () {},
       render: function (cssW, cssH, pixelW, pixelH, time, opts) {
+        opts = opts || {};
         t = time;
         ctx.setTransform(pixelW / cssW, 0, 0, pixelH / cssH, 0, 0);
         const g = ctx.createRadialGradient(cssW * 0.5, cssH * 0.42, cssH * 0.05, cssW * 0.5, cssH * 0.5, Math.max(cssW, cssH) * 0.72);
@@ -376,7 +394,7 @@ void main() {
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, cssW, cssH);
 
-        if (opts.caustics) {
+        if (opts.caustics && (opts.causticGain == null || opts.causticGain > 0.05)) {
           ctx.save();
           ctx.globalCompositeOperation = "lighter";
           for (let i = 0; i < 5; i++) {
@@ -416,6 +434,25 @@ void main() {
         vg.addColorStop(1, "rgba(0,0,0,0.32)");
         ctx.fillStyle = vg;
         ctx.fillRect(0, 0, cssW, cssH);
+
+        const tint = opts.tint || [1, 1, 1];
+        const exposure = opts.exposure != null ? opts.exposure : 1;
+        ctx.save();
+        ctx.globalCompositeOperation = "multiply";
+        ctx.fillStyle =
+          "rgb(" +
+          Math.round(clamp255(tint[0] * exposure * 255)) +
+          "," +
+          Math.round(clamp255(tint[1] * exposure * 255)) +
+          "," +
+          Math.round(clamp255(tint[2] * exposure * 255)) +
+          ")";
+        ctx.fillRect(0, 0, cssW, cssH);
+        ctx.restore();
+        if (opts.haze) {
+          ctx.fillStyle = "rgba(150, 170, 174, " + Math.min(0.45, opts.haze * 0.5) + ")";
+          ctx.fillRect(0, 0, cssW, cssH);
+        }
       },
     };
   }

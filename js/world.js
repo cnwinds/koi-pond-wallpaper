@@ -418,10 +418,11 @@
           f.turnSide = 0;
         }
 
-        const maxOmega = f.maxOmega * (seeking ? 1.9 : 1) * (f.speed < 10 ? 0.7 : 1);
-        const shaped = Math.pow(clamp(Math.abs(err) / 1.05, 0, 1), 1.55);
+        const maxOmega = f.maxOmega * (seeking ? 1.28 : 1) * (f.speed < 10 ? 0.7 : 1);
+        const shaped = Math.pow(clamp(Math.abs(err) / 1.15, 0, 1), 1.65);
         const desiredOmega = Math.sign(err) * shaped * maxOmega;
-        f.omega = damp(f.omega, desiredOmega, dt, 7.2);
+        const maxAlpha = seeking ? 3.6 : 2.2;
+        f.omega += clamp(desiredOmega - f.omega, -maxAlpha * dt, maxAlpha * dt);
         f.omega = clamp(f.omega, -maxOmega, maxOmega);
         f.heading = angWrap(f.heading + f.omega * dt);
         f.angle = f.heading;

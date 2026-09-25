@@ -475,7 +475,7 @@
         f.x = clamp(f.x, 14, cssW - 14);
         f.y = clamp(f.y, 14, cssH - 14);
 
-        const targetBend = clamp(f.omega * 0.28, -0.52, 0.52);
+        const targetBend = clamp(f.omega * 0.45, -0.62, 0.62);
         f.bendBias = damp(f.bendBias, targetBend, dt, 6.5);
 
         followSpine(f);
@@ -525,9 +525,9 @@
       for (let i = 0; i < spine.length; i++) {
         const s = i / (spine.length - 1);
         const a = spine[i].a;
-        const wave = f.waveGain * 0.085 * Math.pow(s, 1.9) * Math.sin(f.phase - s * k);
+        const wave = f.waveGain * 0.12 * Math.pow(s, 1.9) * Math.sin(f.phase - s * k);
         const bend = f.bendBias * (0.12 + 0.88 * s);
-        const lat = (wave + bend * 0.34) * len;
+        const lat = (wave + bend * 0.52) * len;
         spine[i].dx = spine[i].x + -Math.sin(a) * lat;
         spine[i].dy = spine[i].y + Math.cos(a) * lat;
         spine[i].da = a + f.waveGain * 0.32 * Math.pow(s, 1.35) * Math.cos(f.phase - s * k) + f.bendBias * 0.5;

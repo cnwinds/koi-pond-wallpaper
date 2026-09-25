@@ -1,0 +1,36 @@
+{
+  "labelPond": {
+    "type": "label",
+    "value": "Koi pond / 锦鲤池"
+  },
+  "fishCount": {
+    "max": 16,
+    "min": 1,
+    "step": 1,
+    "text": "Fish count",
+    "type": "slider",
+    "help": "How many koi swim in the pond",
+    "value": 7
+  },
+  "quality": {
+    "type": "dropdown",
+    "value": 1,
+    "text": "Effects quality",
+    "help": "Ripple resolution, caustics, and pixel density",
+    "items": ["Low", "Medium", "High"]
+  },
+  "fps": {
+    "max": 60,
+    "min": 15,
+    "step": 1,
+    "text": "Target FPS",
+    "type": "slider",
+    "help": "Wallpaper-friendly default is 30",
+    "value": 30
+  },
+  "showUi": {
+    "type": "checkbox",
+    "value": true,
+    "text": "Show settings gear"
+  }
+}

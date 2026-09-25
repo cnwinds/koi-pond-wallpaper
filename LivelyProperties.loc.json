@@ -1,0 +1,26 @@
+{
+  "Languages": {
+    "zh-CN": {
+      "labelPond": { "value": "锦鲤池" },
+      "fishCount": { "text": "锦鲤数量", "help": "池中游动的鱼数量" },
+      "quality": {
+        "text": "画质",
+        "help": "涟漪分辨率、焦散与像素密度",
+        "items": ["低", "中", "高"]
+      },
+      "fps": { "text": "目标帧率", "help": "壁纸建议 30" },
+      "showUi": { "text": "显示设置按钮" }
+    },
+    "zh-TW": {
+      "labelPond": { "value": "錦鯉池" },
+      "fishCount": { "text": "錦鯉數量", "help": "池中游動的魚數量" },
+      "quality": {
+        "text": "畫質",
+        "help": "漣漪解析度、焦散與像素密度",
+        "items": ["低", "中", "高"]
+      },
+      "fps": { "text": "目標幀率", "help": "桌布建議 30" },
+      "showUi": { "text": "顯示設定按鈕" }
+    }
+  }
+}

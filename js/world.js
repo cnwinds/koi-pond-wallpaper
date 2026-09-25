@@ -90,7 +90,7 @@
         vx: Math.cos(heading) * 20,
         vy: Math.sin(heading) * 20,
         cruise: 20 + rng() * 14,
-        boost: 42 + rng() * 16,
+        boost: 50 + rng() * 16,
         maxOmega: 1.05 + rng() * 0.45,
         size,
         phase: rng() * TWO_PI,
@@ -291,6 +291,7 @@
       spine[0].x = f.x;
       spine[0].y = f.y;
       spine[0].a = f.heading;
+      const maxJoint = 0.32;
       for (let i = 1; i < SPINE_N; i++) {
         let dx = spine[i].x - spine[i - 1].x;
         let dy = spine[i].y - spine[i - 1].y;
@@ -300,9 +301,36 @@
           dy = -Math.sin(spine[i - 1].a);
           d = 1;
         }
-        spine[i].x = spine[i - 1].x + (dx / d) * spacing;
-        spine[i].y = spine[i - 1].y + (dy / d) * spacing;
-        spine[i].a = Math.atan2(spine[i - 1].y - spine[i].y, spine[i - 1].x - spine[i].x);
+        let a = Math.atan2(-dy, -dx);
+        const diff = angWrap(a - spine[i - 1].a);
+        if (Math.abs(diff) > maxJoint) a = spine[i - 1].a + Math.sign(diff) * maxJoint;
+        spine[i].x = spine[i - 1].x - Math.cos(a) * spacing;
+        spine[i].y = spine[i - 1].y - Math.sin(a) * spacing;
+        spine[i].a = a;
+      }
+    }
+
+    function assignSeekers() {
+      const ranked = [];
+      for (let i = 0; i < fish.length; i++) {
+        const f = fish[i];
+        if (f.food && f.food.eaten) f.food = null;
+        if (f.eatT > 0) continue;
+        const found = nearestFood(f);
+        if (found && found.dist < f.vision * (0.45 + f.greed * 0.7)) {
+          ranked.push({ f: f, dist: found.dist, pellet: found.pellet });
+        }
+      }
+      ranked.sort(function (a, b) {
+        return a.dist - b.dist;
+      });
+      const chosen = [];
+      for (let i = 0; i < ranked.length && chosen.length < 3; i++) {
+        ranked[i].f.food = ranked[i].pellet;
+        chosen.push(ranked[i].f);
+      }
+      for (let i = 0; i < fish.length; i++) {
+        if (chosen.indexOf(fish[i]) < 0 && fish[i].eatT <= 0) fish[i].food = null;
       }
     }
 
@@ -319,19 +347,18 @@
         if (pellet.eaten || pellet.life <= 0) food.splice(i, 1);
       }
 
+      assignSeekers();
+
       for (let i = 0; i < fish.length; i++) {
         const f = fish[i];
         f.eatT = Math.max(0, f.eatT - dt);
         f.rippleT -= dt;
-        f.wanderAngle = angWrap(f.wanderAngle + (rng() - 0.5) * 2 * f.wanderJitter * dt);
-        f.wanderAngle = clamp(f.wanderAngle, -0.95, 0.95);
-
-        const found = nearestFood(f);
-        if (found && found.dist < f.vision * (0.45 + f.greed * 0.7) && f.eatT <= 0) {
-          f.food = found.pellet;
-        } else if (f.food && f.food.eaten) {
-          f.food = null;
+        if (!f.food) {
+          f.wanderAngle = angWrap(f.wanderAngle + (rng() - 0.5) * 2 * f.wanderJitter * dt);
+          f.wanderAngle = clamp(f.wanderAngle, -0.95, 0.95);
         }
+
+        if (f.food && f.food.eaten) f.food = null;
 
         const seeking = !!(f.food && !f.food.eaten);
         let desiredX;
@@ -343,13 +370,13 @@
           const dx = f.food.x - f.x;
           const dy = f.food.y - f.y;
           arriveDist = Math.hypot(dx, dy) || 0.001;
-          const arriveR = 110 * f.size;
-          const seekSpeed = f.boost * (calm ? 0.7 : 1);
-          desiredSpeed = arriveDist < arriveR ? seekSpeed * (arriveDist / arriveR) : seekSpeed;
-          desiredSpeed = Math.max(desiredSpeed, 8);
+          const arriveR = 64 * f.size;
+          const seekSpeed = f.boost * (calm ? 0.75 : 1);
+          const ramp = arriveDist < arriveR ? 0.35 + 0.65 * (arriveDist / arriveR) : 1;
+          desiredSpeed = Math.max(seekSpeed * ramp, 12);
           desiredX = (dx / arriveDist) * desiredSpeed;
           desiredY = (dy / arriveDist) * desiredSpeed;
-          if (arriveDist < 17 * f.size) eat(f, f.food, water);
+          if (arriveDist < 24 * f.size) eat(f, f.food, water);
         } else {
           const w = wanderTarget(f);
           const dx = w.x - f.x;
@@ -361,8 +388,9 @@
         }
 
         const sep = separation(f, i);
-        desiredX += sep.x * 26;
-        desiredY += sep.y * 26;
+        const sepW = seeking && arriveDist < 90 ? 8 : 26;
+        desiredX += sep.x * sepW;
+        desiredY += sep.y * sepW;
         const wall = wallSteer(f);
         desiredX += wall.x * 48;
         desiredY += wall.y * 48;
@@ -370,7 +398,7 @@
         const steerX = desiredX - f.vx;
         const steerY = desiredY - f.vy;
         const steerMag = Math.hypot(steerX, steerY);
-        const maxSteer = seeking ? 54 : 32;
+        const maxSteer = seeking ? 70 : 32;
         if (steerMag > maxSteer) {
           desiredX = f.vx + (steerX / steerMag) * maxSteer;
           desiredY = f.vy + (steerY / steerMag) * maxSteer;
@@ -380,7 +408,9 @@
         }
 
         const goalHeading = Math.atan2(desiredY, desiredX);
-        let err = angWrap(goalHeading - f.heading);
+        const course = Math.atan2(f.vy, f.vx);
+        const aim = seeking && f.speed > 14 ? course : f.heading;
+        let err = angWrap(goalHeading - aim);
         if (Math.abs(err) > 2.45) {
           if (!f.turnSide) f.turnSide = err > 0 ? 1 : -1;
           err = f.turnSide * Math.abs(err);
@@ -388,7 +418,7 @@
           f.turnSide = 0;
         }
 
-        const maxOmega = f.maxOmega * (seeking ? 1.55 : 1) * (f.speed < 10 ? 0.7 : 1);
+        const maxOmega = f.maxOmega * (seeking ? 1.9 : 1) * (f.speed < 10 ? 0.7 : 1);
         const shaped = Math.pow(clamp(Math.abs(err) / 1.05, 0, 1), 1.55);
         const desiredOmega = Math.sign(err) * shaped * maxOmega;
         f.omega = damp(f.omega, desiredOmega, dt, 7.2);
@@ -436,7 +466,6 @@
         f.phase += dt * TWO_PI * f.hz;
 
         const align = 1 - Math.exp(-dt * 9);
-        const course = Math.atan2(f.vy, f.vx);
         const aligned = course + angWrap(f.heading - course) * align;
         f.vx = Math.cos(aligned) * f.speed;
         f.vy = Math.sin(aligned) * f.speed;
@@ -527,7 +556,7 @@
       const bodyH = bodyW * (tex.height / tex.width);
       const spine = f.spine;
       const step = (spine.length - 1) / (n - 1);
-      const dw = spacingOf(f) * 1.82;
+      const dw = spacingOf(f) * 2.25;
       ctx.save();
       ctx.globalAlpha = 0.96;
       for (let i = 0; i < n; i++) {

@@ -32,5 +32,17 @@
     "type": "checkbox",
     "value": true,
     "text": "Show settings gear"
+  },
+  "lat": {
+    "type": "textbox",
+    "value": "31.2304",
+    "text": "Latitude",
+    "help": "Weather and sun. Default Shanghai 31.2304"
+  },
+  "lon": {
+    "type": "textbox",
+    "value": "121.4737",
+    "text": "Longitude",
+    "help": "Weather and sun. Default Shanghai 121.4737"
   }
 }

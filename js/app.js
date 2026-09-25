@@ -3,6 +3,7 @@
   const config = PondConfig.create();
   const waterCanvas = document.getElementById("water");
   const lifeCanvas = document.getElementById("life");
+  const wxCanvas = document.getElementById("wx");
   const hud = document.getElementById("hud");
   const gear = document.getElementById("gear");
   const panel = document.getElementById("panel");
@@ -12,11 +13,21 @@
   const qualitySelect = document.getElementById("qualitySelect");
   const fpsRange = document.getElementById("fpsRange");
   const fpsOut = document.getElementById("fpsOut");
+  const latInput = document.getElementById("latInput");
+  const lonInput = document.getElementById("lonInput");
+  const skyNote = document.getElementById("skyNote");
   const rendererNote = document.getElementById("rendererNote");
 
   const sprites = PondSprites.createLibrary();
   let water = PondWater.create(waterCanvas, config.preset());
   const world = PondWorld.create(lifeCanvas, { sprites });
+  const climate = PondClimate.create({
+    canvas: wxCanvas,
+    lat: config.state.lat,
+    lon: config.state.lon,
+    tz: config.state.tz,
+    sky: config.state.sky,
+  });
 
   let cssW = 1;
   let cssH = 1;
@@ -48,6 +59,7 @@
     lifeCanvas.width = pixelW;
     lifeCanvas.height = pixelH;
     world.resize(cssW, cssH, dpr);
+    climate.resize(cssW, cssH, dpr);
   }
 
   let lastQuality = config.state.quality;
@@ -71,6 +83,8 @@
     if (qualitySelect) qualitySelect.value = s.quality;
     if (fpsRange) fpsRange.value = String(s.fps);
     if (fpsOut) fpsOut.value = String(s.fps);
+    if (latInput && document.activeElement !== latInput) latInput.value = s.lat.toFixed(2);
+    if (lonInput && document.activeElement !== lonInput) lonInput.value = s.lon.toFixed(2);
     if (hud) {
       hud.classList.toggle("is-hidden", !s.ui);
     }
@@ -78,6 +92,22 @@
       rendererNote.textContent =
         (water.kind() === "webgl2" ? "WebGL2" : "Canvas 2D") + " · " + s.quality;
     }
+    if (skyNote) skyNote.textContent = climate.caption();
+  }
+
+  let lastBg = "";
+
+  function applyCssGrade(look) {
+    const e = look.exposure;
+    const t = look.tint;
+    const r = Math.round(8 * t[0] * e);
+    const g = Math.round(22 * t[1] * e);
+    const b = Math.round(20 * t[2] * e);
+    const bg = "rgb(" + r + ", " + g + ", " + b + ")";
+    if (bg === lastBg) return;
+    lastBg = bg;
+    document.body.style.background = bg;
+    document.documentElement.style.background = bg;
   }
 
   function currentFps() {
@@ -102,14 +132,23 @@
     time += dt;
 
     const preset = config.preset();
-    const ambient = config.state.reducedMotion ? 0.25 : preset.ambientWaves;
+    const look = climate.sample();
+    const calm = config.state.reducedMotion;
+    const ambient = (calm ? 0.25 : preset.ambientWaves) * look.ambientMul;
+    climate.tick(dt, look, preset, water, calm);
     water.update(dt);
-    world.update(dt, water, preset);
+    world.update(dt, water, preset, look);
     water.render(cssW, cssH, pixelW, pixelH, time, {
-      caustics: preset.caustics && !config.state.reducedMotion,
+      caustics: preset.caustics && !calm && look.causticGain > 0.04,
       ambient: ambient,
+      exposure: look.exposure,
+      tint: look.tint,
+      causticGain: look.causticGain,
+      haze: look.haze,
     });
     world.render(preset);
+    climate.render(look);
+    applyCssGrade(look);
 
     if (config.state.demo) {
       demoT += dt;
@@ -177,6 +216,13 @@
         config.assign({ fps: parseInt(fpsRange.value, 10) }, "ui");
       });
     }
+    function commitPlace() {
+      const lat = parseFloat(latInput && latInput.value);
+      const lon = parseFloat(lonInput && lonInput.value);
+      config.assign({ lat: lat, lon: lon }, "ui");
+    }
+    if (latInput) latInput.addEventListener("change", commitPlace);
+    if (lonInput) lonInput.addEventListener("change", commitPlace);
     if (panel) {
       panel.addEventListener("click", function (ev) {
         ev.stopPropagation();
@@ -204,6 +250,7 @@
 
   config.onChange(function (state, reason) {
     applyWorldSettings();
+    climate.setPlace({ lat: state.lat, lon: state.lon, tz: state.tz, sky: state.sky });
     syncHud();
     if (reason === "ui" || reason === "change") {
       try {
@@ -218,6 +265,8 @@
     hiddenPause = document.hidden;
     if (hiddenPause) {
       last = 0;
+    } else {
+      climate.start();
     }
   });
 
@@ -257,10 +306,15 @@
     } catch (err) {}
   };
 
+  climate.onChange(function () {
+    if (skyNote) skyNote.textContent = climate.caption();
+  });
+
   global.KoiPond = {
     config: config,
     water: water,
     world: world,
+    climate: climate,
     feed: function (x, y) {
       world.feed(x, y, water);
     },
@@ -271,5 +325,6 @@
   syncHud();
   bindHud();
   showHint();
+  climate.start();
   start();
 })(window);

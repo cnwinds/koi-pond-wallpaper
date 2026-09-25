@@ -11,6 +11,7 @@ internal sealed class AppForm : Form
     readonly NotifyIcon _tray;
     readonly System.Windows.Forms.Timer _watch;
     bool _attached;
+    bool _allowClose;
 
     public AppForm(LaunchMode mode, string webRoot)
     {
@@ -22,8 +23,10 @@ internal sealed class AppForm : Form
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
-        var vs = SystemInformation.VirtualScreen;
-        Bounds = vs;
+        // Stay off-screen until we are a desktop-child. A maximized
+        // top-level form is NOT the wallpaper and must not appear first.
+        Bounds = new Rectangle(-32000, -32000, 80, 80);
+        Opacity = 0;
 
         _web = new WebView2
         {
@@ -35,16 +38,16 @@ internal sealed class AppForm : Form
         _tray = new NotifyIcon
         {
             Visible = true,
-            Text = "锦鲤池",
+            Text = "锦鲤池 · 桌面壁纸",
             Icon = SystemIcons.Application,
         };
         var menu = new ContextMenuStrip();
         menu.Items.Add("投喂 / Feed", null, async (_, _) => await FeedAsync());
         menu.Items.Add("重新贴到桌面 / Pin desktop", null, async (_, _) => await AttachWallpaperAsync());
-        menu.Items.Add("窗口预览 / Window", null, (_, _) => ShowAsWindow());
-        menu.Items.Add("用 Lively 设壁纸 / Lively", null, (_, _) => TryLively());
+        menu.Items.Add("用 Lively 设壁纸 / Lively", null, (_, _) => UseLivelyOrExplain());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("退出 / Exit", null, (_, _) => ExitApp());
+        menu.Items.Add("窗口预览（不是桌面背景） / Preview only", null, (_, _) => ShowAsWindow());
+        menu.Items.Add("退出壁纸 / Exit", null, (_, _) => ExitApp());
         _tray.ContextMenuStrip = menu;
         _tray.DoubleClick += async (_, _) => await FeedAsync();
 
@@ -59,13 +62,13 @@ internal sealed class AppForm : Form
             }
         };
 
-        Shown += async (_, _) => await BootAsync();
+        Load += async (_, _) => await BootAsync();
         FormClosing += (_, ev) =>
         {
-            if (ev.CloseReason == CloseReason.UserClosing && _attached)
+            if (!_allowClose && ev.CloseReason == CloseReason.UserClosing)
             {
                 ev.Cancel = true;
-                Hide();
+                if (!_attached) Hide();
             }
         };
         FormClosed += (_, _) =>
@@ -77,18 +80,31 @@ internal sealed class AppForm : Form
         };
     }
 
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var cp = base.CreateParams;
+            cp.ExStyle |= 0x00000080 | 0x08000000; // TOOLWINDOW | NOACTIVATE
+            return cp;
+        }
+    }
+
     async Task BootAsync()
     {
-        await InitWebAsync();
-        if (_mode == LaunchMode.Lively)
+        try
         {
-            if (TryLively())
-            {
-                _tray.ShowBalloonTip(4000, "锦鲤池", "已交给 Lively 设为桌面壁纸。", ToolTipIcon.Info);
-                ExitApp();
-                return;
-            }
-            _tray.ShowBalloonTip(6000, "锦鲤池", "没有找到 Lively，改为直接贴到桌面。", ToolTipIcon.Info);
+            await InitWebAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                "无法启动 WebView2。请安装或修复 Microsoft Edge WebView2 Runtime。\n\n" + ex.Message,
+                "锦鲤池",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            ExitApp();
+            return;
         }
 
         if (_mode == LaunchMode.Window)
@@ -97,27 +113,54 @@ internal sealed class AppForm : Form
             return;
         }
 
-        var ok = await AttachWallpaperAsync();
-        if (!ok)
+        if (_mode == LaunchMode.Lively)
         {
-            if (LivelyBridge.IsInstalled() && TryLively())
+            if (UseLivelyOrExplain())
             {
-                _tray.ShowBalloonTip(4000, "锦鲤池", "已用 Lively 设为桌面壁纸。", ToolTipIcon.Info);
                 ExitApp();
                 return;
             }
-            ShowAsWindow();
-            _tray.ShowBalloonTip(
-                8000,
-                "锦鲤池",
-                "没能贴到图标后面。已用窗口预览。可安装 Lively Wallpaper 后再试，或从托盘重新贴到桌面。",
-                ToolTipIcon.Warning);
         }
-        else
+
+        if (await AttachWallpaperAsync())
         {
             _watch.Start();
-            _tray.ShowBalloonTip(3500, "锦鲤池", "已设为桌面动态壁纸。右下角托盘可投喂或退出。", ToolTipIcon.Info);
+            _tray.ShowBalloonTip(3500, "锦鲤池", "已设为桌面动态壁纸（图标后面）。托盘可投喂或退出。", ToolTipIcon.Info);
+            return;
         }
+
+        if (LivelyBridge.IsInstalled() && LivelyBridge.TrySetWallpaper(_webRoot))
+        {
+            _tray.ShowBalloonTip(4000, "锦鲤池", "已交给 Lively 设为桌面壁纸。", ToolTipIcon.Info);
+            ExitApp();
+            return;
+        }
+
+        Hide();
+        Opacity = 0;
+        var choice = SetupPrompt.Show(LivelyBridge.IsInstalled());
+        if (choice == SetupPrompt.Choice.Retry)
+        {
+            if (await AttachWallpaperAsync())
+            {
+                _watch.Start();
+                return;
+            }
+        }
+        if (choice == SetupPrompt.Choice.Lively)
+        {
+            if (UseLivelyOrExplain())
+            {
+                ExitApp();
+                return;
+            }
+        }
+        if (choice == SetupPrompt.Choice.Preview)
+        {
+            ShowAsWindow();
+            return;
+        }
+        ExitApp();
     }
 
     async Task InitWebAsync()
@@ -151,18 +194,24 @@ internal sealed class AppForm : Form
 
     async Task<bool> AttachWallpaperAsync()
     {
-        Show();
-        FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
+        FormBorderStyle = FormBorderStyle.None;
         WindowState = FormWindowState.Normal;
-        Bounds = SystemInformation.VirtualScreen;
-        await Task.Delay(80);
+        Show();
+        _ = Handle;
+        await Task.Delay(60);
         _attached = NativeDesktop.TryAttach(Handle);
         if (_attached)
         {
-            Bounds = SystemInformation.VirtualScreen;
+            Opacity = 1;
+            var vs = SystemInformation.VirtualScreen;
+            Bounds = new Rectangle(0, 0, vs.Width, vs.Height);
+            return true;
         }
-        return _attached;
+        _attached = false;
+        Hide();
+        Opacity = 0;
+        return false;
     }
 
     void ShowAsWindow()
@@ -176,14 +225,36 @@ internal sealed class AppForm : Form
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = true;
         WindowState = FormWindowState.Maximized;
+        Opacity = 1;
         Bounds = Screen.PrimaryScreen?.Bounds ?? SystemInformation.VirtualScreen;
         Show();
         Activate();
+        _tray.ShowBalloonTip(5000, "锦鲤池", "当前是窗口预览，不是桌面背景。请从托盘选「重新贴到桌面」。", ToolTipIcon.Info);
     }
 
-    bool TryLively()
+    bool UseLivelyOrExplain()
     {
-        return LivelyBridge.TrySetWallpaper(_webRoot);
+        if (LivelyBridge.TrySetWallpaper(_webRoot))
+        {
+            _tray.ShowBalloonTip(4000, "锦鲤池", "已用 Lively 设为桌面壁纸。", ToolTipIcon.Info);
+            return true;
+        }
+        if (!LivelyBridge.IsInstalled())
+        {
+            LivelyBridge.OpenDownloadPage();
+            MessageBox.Show(
+                "未检测到 Lively Wallpaper。已打开下载页。\n安装后再双击 koi-pond-wallpaper.exe，或从托盘选「用 Lively 设壁纸」。\n\nhttps://github.com/rocksdanister/lively/releases",
+                "锦鲤池",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return false;
+        }
+        MessageBox.Show(
+            "已把锦鲤池拷进 Lively 图库，但没能自动设为当前壁纸。请在 Lively 图库里选「锦鲤池」。",
+            "锦鲤池",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
+        return false;
     }
 
     async Task FeedAsync()
@@ -195,6 +266,7 @@ internal sealed class AppForm : Form
 
     void ExitApp()
     {
+        _allowClose = true;
         _attached = false;
         _tray.Visible = false;
         Application.Exit();

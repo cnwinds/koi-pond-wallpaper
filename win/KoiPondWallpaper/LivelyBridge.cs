@@ -20,7 +20,8 @@ internal static class LivelyBridge
         }
 
         var cmd = FindOnPath("livelycu.exe") ?? FindOnPath("Livelycu.exe");
-        return cmd;
+        if (cmd != null) return cmd;
+        return FindUnderLocal("livelycu.exe");
     }
 
     public static string? FindApp()
@@ -48,25 +49,19 @@ internal static class LivelyBridge
             if (!File.Exists(Path.Combine(webRoot, "index.html"))) return false;
             var library = CopyIntoLibrary(webRoot);
             if (library == null) return false;
+            var html = Path.Combine(library, "index.html");
             var cu = FindCommandUtility();
             if (cu != null)
             {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = cu,
-                    Arguments = "setwp --file \"" + library + "\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
-                using var proc = Process.Start(psi);
-                if (proc == null) return false;
-                proc.WaitForExit(8000);
-                return proc.ExitCode == 0 || proc.HasExited;
+                if (RunSetWp(cu, library) || RunSetWp(cu, html)) return true;
             }
 
             var app = FindApp();
-            if (app == null) return false;
-            Process.Start(new ProcessStartInfo { FileName = app, UseShellExecute = true });
+            if (app != null)
+            {
+                if (RunSetWp(app, library) || RunSetWp(app, html)) return true;
+                Process.Start(new ProcessStartInfo { FileName = app, UseShellExecute = true });
+            }
             return false;
         }
         catch
@@ -102,6 +97,57 @@ internal static class LivelyBridge
         {
             File.Copy(file, Path.Combine(dest, Path.GetFileName(file)), true);
         }
+    }
+
+    public static void OpenDownloadPage()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "https://github.com/rocksdanister/lively/releases",
+                UseShellExecute = true,
+            });
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    static bool RunSetWp(string exe, string file)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = exe,
+            Arguments = "setwp --file \"" + file + "\"",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        using var proc = Process.Start(psi);
+        if (proc == null) return false;
+        proc.WaitForExit(10000);
+        return proc.ExitCode == 0;
+    }
+
+    static string? FindUnderLocal(string file)
+    {
+        try
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var packages = Path.Combine(home, "Packages");
+            if (!Directory.Exists(packages)) return null;
+            foreach (var dir in Directory.GetDirectories(packages, "*LivelyWallpaper*"))
+            {
+                var hits = Directory.GetFiles(dir, file, SearchOption.AllDirectories);
+                if (hits.Length > 0) return hits[0];
+            }
+        }
+        catch
+        {
+            /* store sandbox paths can throw */
+        }
+        return null;
     }
 
     static string? FindOnPath(string file)

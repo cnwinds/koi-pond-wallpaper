@@ -24,6 +24,7 @@ cp -R "$root/js" "$stage/js"
 cp -R "$root/css" "$stage/css"
 cp "$root/win/使用说明.txt" "$stage/使用说明.txt"
 cp "$root/win/window-preview.bat" "$stage/window-preview.bat"
+cp "$root/win/设为桌面壁纸.bat" "$stage/设为桌面壁纸.bat"
 
 rm -f "$zip"
 mkdir -p "$root/dist"

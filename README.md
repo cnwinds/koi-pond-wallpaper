@@ -10,12 +10,12 @@ Windows 上可下载 [Release](https://github.com/cnwinds/koi-pond-wallpaper/rel
 
 1. 打开 [Releases](https://github.com/cnwinds/koi-pond-wallpaper/releases/latest)，下载 `koi-pond-wallpaper-windows-x64.zip`。
 2. 解压到固定目录（不要只抽 exe，网页文件要和 exe 在一起）。
-3. 双击 `koi-pond-wallpaper.exe`。池塘会贴到**桌面图标后面**，不是普通全屏窗口。
-4. 右下角托盘：投喂、重新贴到桌面、窗口预览、用 Lively 设壁纸、退出。
+3. 双击 `koi-pond-wallpaper.exe`（或「设为桌面壁纸.bat」）。池塘会贴到**桌面图标后面**，不是普通全屏窗口。
+4. 右下角托盘：投喂、重新贴到桌面、用 Lively 设壁纸、退出。贴不上时会说明下一步，**不会**自动改成全屏窗口。
 
-要求：Windows 10 1809+ / 11（64 位），[WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)（Win11 通常已有）。不必另装 .NET，也不必安装 Lively。白屏时先装 / 修复 WebView2。
+要求：Windows 10 1809+ / 11（64 位），[WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)（Win11 通常已有）。不必另装 .NET，**也不必**安装 Lively。白屏时先装 / 修复 WebView2。Lively 只是贴桌面失败时的备选。
 
-备选：`--window` 或 `window-preview.bat` 只做窗口预览；`--lively` 在已安装 Lively 时走 Lively 设壁纸。手动 Lively 导入见下一节。本地构建：`win/package.ps1`（Windows）或装好 .NET 8 后 `bash win/package.sh`。CI 在打 `v*` tag 时用 `windows-latest` 打包并挂到 Release。
+仅预览（不是桌面背景）：`--window` 或 `window-preview.bat`。优先走 Lively：`--lively`。手动把源码文件夹拖进 Lively 见下一节。本地构建：`win/package.ps1` 或 `bash win/package.sh`。打 `v*` tag 时 CI 会在 `windows-latest` 打包并挂到 Release。
 
 ## 快速开始（源码 / 浏览器）
 

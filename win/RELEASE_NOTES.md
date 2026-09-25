@@ -1,24 +1,25 @@
-# 锦鲤池 v0.2.0
+# 锦鲤池 v0.2.1
 
-安静的庭院锦鲤池，第一次提供 **Windows 可下载运行包**：解压后双击 `koi-pond-wallpaper.exe`，把池塘设为**桌面动态壁纸**（贴在图标后面），不是普通全屏窗口。
+解压后双击 `koi-pond-wallpaper.exe`，把池塘设为**桌面动态壁纸**（贴在图标后面）。**不是**普通全屏窗口。
 
 ## 下载后如何变成桌面背景
 
-1. 下载 `koi-pond-wallpaper-windows-x64.zip` 并解压到固定目录。
-2. 双击 `koi-pond-wallpaper.exe`。
-3. 锦鲤会游在桌面图标后面。右下角托盘可投喂、重新贴上、退出。
-4. 若没贴到图标后：托盘选「重新贴到桌面」；或先安装 [Lively Wallpaper](https://github.com/rocksdanister/lively/releases) 再运行（也可 `--lively`）。只要看效果可用 `window-preview.bat`。
+1. 下载 `koi-pond-wallpaper-windows-x64.zip`，解压到固定目录（exe 必须和 `index.html`、`js`、`css` 在一起）。
+2. 双击 `koi-pond-wallpaper.exe`，或双击「设为桌面壁纸.bat」。
+3. 锦鲤会出现在桌面图标后面。右下角托盘可投喂、重新贴上、退出。
+4. 若没贴上：按提示再试，或安装 [Lively Wallpaper](https://github.com/rocksdanister/lively/releases) 后重试（程序会写入图库并尝试设壁纸）。**不会**自动变成全屏应用窗口。
 
-## 系统要求
+## 系统要求（prerequisites）
 
 - Windows 10 1809+ / Windows 11，64 位
-- [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)（Win11 通常已有）
-- 不必另装 .NET；不必安装 Lively（有则作为备选）
+- [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)（Win11 通常已有；白屏时请安装 / 修复）
+- 不必另装 .NET
+- **不必**安装 Lively。Lively 只是贴桌面失败时的备选；手动导入源码文件夹也可以
 
-## 这一版网页核心
+## 这一版相对 v0.2.0
 
-- 游动：swim/idle、低频改航向、转弯半径、IK 脊柱（koi.rest 类模型，重实现）
-- 真实日夜 + Open-Meteo 天气；地点：已授权 GPS → IP（geojs.io / ipwho.is）→ 上海
-- 点击投喂、画质设置、Lively 手动导入、省电都还在
+- 默认只走桌面壁纸（WorkerW / Progman），失败改走 Lively 或说明框
+- 全屏窗口只在你明确选「仅窗口预览」或 `--window` 时出现
+- 更完整的 Win11 WorkerW 候选窗口
 
-源码文件夹里的 `index.html` 仍可当普通网页或手动导入 Lively。
+源码里的 `index.html` 仍可当网页，或按 README 手动导入 Lively。

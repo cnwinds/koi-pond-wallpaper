@@ -144,10 +144,10 @@
     time += dt;
 
     const preset = config.preset();
-    const look = climate.sample();
+    const target = climate.sample();
     const calm = config.state.reducedMotion;
+    const look = climate.tick(dt, target, preset, water, calm) || target;
     const ambient = (calm ? 0.25 : preset.ambientWaves) * look.ambientMul;
-    climate.tick(dt, look, preset, water, calm);
     water.update(dt);
     world.update(dt, water, preset, look);
     world.render(preset, look);
@@ -163,7 +163,6 @@
       life: lifeCanvas,
     });
     climate.render(look);
-    water.renderRings(wxCanvas.getContext("2d"), cssW, cssH, dprCap());
     applyCssGrade(look);
 
     if (config.state.demo) {

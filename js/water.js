@@ -155,10 +155,12 @@ void main() {
 
   float cau = 0.0;
   float cau2 = 0.0;
-  if (uCaustics > 0.5) {
+  float sunW = clamp(uCaustics, 0.0, 1.0);
+  /* Weight, not a switch: causticGain already eases with the weather blend. */
+  if (sunW > 0.001) {
     cau = caustic(refr * vec2(aspect, 1.0) + n.xy * 0.8, uTime);
     cau2 = caustic(refr.yx * vec2(1.0, aspect) * 0.85 - n.xy * 0.4, uTime * 0.82 + 12.0);
-    float cauAmt = (0.5 + 0.5 * depth) * uCausticGain * (1.0 - calm * 0.85);
+    float cauAmt = (0.5 + 0.5 * depth) * uCausticGain * sunW * (1.0 - calm * 0.85);
     floorCol += vec3(0.48, 0.64, 0.40) * (cau * 0.32 + cau2 * 0.18) * cauAmt;
   }
 
@@ -192,7 +194,7 @@ void main() {
     vec3 lightT = mix(moonT, sunT, uDayness);
     float lightE = mix(0.62, 1.0, uDayness);
     vec3 lit = lifeC.rgb * lightT * lightE;
-    lit += vec3(0.42, 0.58, 0.36) * (cau * 0.14 + cau2 * 0.07) * uCausticGain;
+    lit += vec3(0.42, 0.58, 0.36) * (cau * 0.14 + cau2 * 0.07) * uCausticGain * sunW;
     lit *= 1.0 + h * 0.18;
     water = mix(water, lit, clamp(lifeC.a, 0.0, 1.0));
   }
@@ -206,10 +208,11 @@ void main() {
   if (night > 0.02) {
     water = mix(water, water * vec3(0.42, 0.50, 0.78), clamp(night * 0.55, 0.0, 0.55));
     water = mix(water, vec3(0.01, 0.02, 0.06), night * 0.22 * (1.0 - vig));
-    if (night > 0.45) {
+    float moonAmt = smoothstep(0.35, 0.72, night);
+    if (moonAmt > 0.001) {
       vec2 moon = vec2(0.78, 0.86);
       float md = length((uv - moon) * vec2(aspect, 1.15));
-      water += vec3(0.82, 0.86, 0.95) * smoothstep(0.11, 0.0, md) * 0.38 * night;
+      water += vec3(0.82, 0.86, 0.95) * smoothstep(0.11, 0.0, md) * 0.38 * moonAmt;
     }
   }
   if (uDayness > 0.12 && uDayness < 0.55) {
@@ -482,7 +485,8 @@ void main() {
       gl.uniform2f(water.uResolution, cssW, cssH);
       gl.uniform2f(water.uRippleTexel, 1 / simW, 1 / simH);
       gl.uniform1f(water.uTime, time);
-      gl.uniform1f(water.uCaustics, opts.caustics ? 1 : 0);
+      const sunW = typeof opts.caustics === "number" ? opts.caustics : opts.caustics ? 1 : 0;
+      gl.uniform1f(water.uCaustics, sunW);
       gl.uniform1f(water.uAmbient, opts.ambient != null ? opts.ambient : 1);
       gl.uniform1f(water.uExposure, opts.exposure != null ? opts.exposure : 1);
       const tint = opts.tint || [1, 1, 1];
@@ -541,8 +545,11 @@ void main() {
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, cssW, cssH);
 
-        if (opts.caustics && (opts.causticGain == null || opts.causticGain > 0.05)) {
+        const sunW = typeof opts.caustics === "number" ? opts.caustics : opts.caustics ? 1 : 0;
+        const gain = (opts.causticGain == null ? 1 : opts.causticGain) * sunW;
+        if (gain > 0.001) {
           ctx.save();
+          ctx.globalAlpha = Math.min(1, gain / 1.15);
           ctx.globalCompositeOperation = "lighter";
           for (let i = 0; i < 5; i++) {
             const x = (0.5 + 0.32 * Math.sin(t * 0.16 + i * 1.7)) * cssW;

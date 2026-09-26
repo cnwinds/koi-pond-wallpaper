@@ -53,20 +53,24 @@ function staticChecks() {
   assert(climate.includes("Rain hits only"), "climate.render is not documented as rain-only", failures);
   assert(climate.includes("releaseOverlay"), "wx idle release missing", failures);
   assert(climate.includes("d.tx - z * d.slantX"), "rain projectDrop must subtract slant (fall onto water, not rise)", failures);
+  assert(climate.includes("d.phase"), "rain streaks missing opacity pulse", failures);
   assert(!climate.includes("d.tx + z * d.slantX"), "rain projectDrop still adds z*slant (rising motion)", failures);
   assert(!climate.includes("rgba(255, 132, 64"), "climate.render still paints dusk fill", failures);
   assert(!climate.includes("rgba(176, 192, 190"), "climate.render still paints haze gradient", failures);
   assert(!climate.includes("rgba(2, 8, 22"), "climate.render still paints night fill", failures);
 
   assert(!app.includes("lastBlendKey"), "app.js still reallocates on blendKey", failures);
-  assert(app.includes("recoverSim"), "app.js never calls recoverSim after settle", failures);
-  assert(app.includes("rippleCalm"), "app.js does not pass rippleCalm", failures);
-  assert(app.includes("rainingHard"), "rippleCalm must stay off while rain is falling", failures);
+  assert(!app.includes("recoverSim"), "settling clear must not wipe ripple FBOs", failures);
+  assert(!app.includes("causticGain > 0.15"), "caustics still gated on gain", failures);
+  assert(!app.includes("veil < 0.08"), "caustics still gated on veil", failures);
+  assert(!app.includes("rainingHard"), "ripple calm still steps on a rain threshold", failures);
+  assert(app.includes("causticWeight"), "app.js does not pass a continuous caustic weight", failures);
   assert(app.includes("fog: look.fog"), "app.js does not pass fog", failures);
+  assert(water.includes("sunW"), "caustics are not a continuous weight in WATER_FS", failures);
   assert(css.includes("#wx.is-idle"), "css missing #wx.is-idle hide rule", failures);
 
   const csproj = read("win/KoiPondWallpaper/KoiPondWallpaper.csproj");
-  assert(csproj.includes("<Version>0.3.7</Version>"), "csproj not bumped to 0.3.7", failures);
+  assert(csproj.includes("<Version>0.3.8</Version>"), "csproj not bumped to 0.3.8", failures);
   return failures;
 }
 
@@ -269,6 +273,73 @@ async function drive(page, seconds) {
   }, seconds);
 }
 
+async function sampleSun(page, seconds) {
+  return page.evaluate((sec) => {
+    function metric() {
+      const water = document.getElementById("water");
+      const tw = 160;
+      const th = 90;
+      const tmp = document.createElement("canvas");
+      tmp.width = tw;
+      tmp.height = th;
+      const ctx = tmp.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(water, 0, 0, tw, th);
+      const data = ctx.getImageData(0, 0, tw, th).data;
+      let sum = 0;
+      let hi = 0;
+      const n = tw * th;
+      for (let i = 0; i < n; i++) {
+        const y = data[i * 4] * 0.299 + data[i * 4 + 1] * 0.587 + data[i * 4 + 2] * 0.114;
+        sum += y;
+        if (y > 155) hi++;
+      }
+      const look = KoiPond.snapshot().look;
+      return { mean: sum / n, hi: hi / n, gain: look.causticGain, day: look.dayness };
+    }
+    const dt = 0.05;
+    const steps = Math.max(1, Math.round(sec / dt));
+    const samples = [];
+    let t = 0;
+    for (let i = 0; i < steps; i++) {
+      KoiPond.drawFrame(dt);
+      t += dt;
+      const row = metric();
+      row.t = t;
+      samples.push(row);
+    }
+    return samples;
+  }, seconds);
+}
+
+function lightPop(samples) {
+  if (!samples || samples.length < 4) return { pop: false, lateMax: 0, lateT: 0, span: 0 };
+  const span = samples[samples.length - 1].hi - samples[0].hi;
+  const meanSpan = samples[samples.length - 1].mean - samples[0].mean;
+  let lateMax = 0;
+  let lateMean = 0;
+  let lateT = 0;
+  for (let i = 1; i < samples.length; i++) {
+    const t = samples[i].t;
+    const d = samples[i].hi - samples[i - 1].hi;
+    const dm = samples[i].mean - samples[i - 1].mean;
+    if (t > 1.05 && d > lateMax) {
+      lateMax = d;
+      lateT = t;
+    }
+    if (t > 1.05 && dm > lateMean) lateMean = dm;
+  }
+  return {
+    span: span,
+    meanSpan: meanSpan,
+    lateMax: lateMax,
+    lateMean: lateMean,
+    lateT: lateT,
+    pop:
+      (span > 0.03 && lateMax > Math.max(0.045, span * 0.38)) ||
+      (meanSpan > 12 && lateMean > Math.max(8, meanSpan * 0.35)),
+  };
+}
+
 async function snapSky(page, sky) {
   await page.evaluate((next) => {
     KoiPond.preview({ sky: next, time: "day", ui: 0 });
@@ -325,14 +396,19 @@ async function runBrowser() {
     { from: "cloudy", label: "cloudy" },
     { from: "fog", label: "fog" },
     { from: "rain", label: "rain" },
+    { from: "clear", time: "night", label: "night" },
   ].filter(function (step) {
     return !only || step.label === only;
   });
   const report = [];
 
   for (const step of paths) {
-    console.log("path", step.label + "→clear");
-    await snapSky(page, step.from);
+    console.log("path", step.label + "→day-clear");
+    await page.evaluate((sky, time) => {
+      KoiPond.preview({ sky: sky, time: time, ui: 0 });
+      if (KoiPond.climate.snap) KoiPond.climate.snap();
+      KoiPond.drawFrame(1 / 30);
+    }, step.from, step.time || "day");
     if (step.from === "rain") {
       await drive(page, 1.05);
       const motion = await page.evaluate(() => {
@@ -356,11 +432,43 @@ async function runBrowser() {
         const aboveHit = a.filter(function (d) {
           return d.z > 0.55 && d.y < d.ty - 2;
         }).length;
+        let slopeN = 0;
+        let slopeSum = 0;
+        let fadeLo = 0;
+        let fadeHi = 0;
+        let dzSum = 0;
+        let dzN = 0;
+        for (let i = 0; i < a.length; i++) {
+          const da = a[i];
+          if (da.fade < 0.12) fadeLo++;
+          if (da.fade > 0.55) fadeHi++;
+          if (da.z > 0.35) {
+            const vx = Math.abs(da.tx - da.x);
+            const vy = Math.abs(da.ty - da.y);
+            if (vy > 8) {
+              slopeSum += vx / vy;
+              slopeN++;
+            }
+          }
+          for (let j = 0; j < b.length; j++) {
+            const db = b[j];
+            if (Math.abs(db.tx - da.tx) > 0.2 || Math.abs(db.ty - da.ty) > 0.2) continue;
+            if (db.z < da.z - 1e-4) {
+              dzSum += da.z - db.z;
+              dzN++;
+            }
+            break;
+          }
+        }
         return {
           n: dys.length,
           meanDy: dys.length ? sum / dys.length : 0,
           aboveHit: aboveHit,
           count: a.length,
+          slope: slopeN ? slopeSum / slopeN : 0,
+          meanDz: dzN ? dzSum / dzN : 0,
+          fadeLo: fadeLo,
+          fadeHi: fadeHi,
         };
       });
       console.log("  rain motion", motion);
@@ -368,16 +476,23 @@ async function runBrowser() {
       if (motion.n < 5) failures.push("rain: could not track falling drops");
       if (motion.meanDy <= 0.15) failures.push("rain: mean dy " + motion.meanDy + " — not falling down");
       if (motion.aboveHit < 2) failures.push("rain: high-z drops are not above their hit points");
+      if (!(motion.slope > 0.12 && motion.slope < 0.62)) {
+        failures.push("rain: slant not steep (lateral/vertical " + motion.slope + ")");
+      }
+      if (motion.meanDz < 0.28) failures.push("rain: fall too slow (Δz " + motion.meanDz + " / 0.25s)");
+      if (motion.fadeLo < 4 || motion.fadeHi < 4) {
+        failures.push("rain: opacity not pulsing (low " + motion.fadeLo + ", high " + motion.fadeHi + ")");
+      }
       const rainFile = path.join(outDir, "rain-settled.png");
       await captureFrame(page, rainFile);
     }
     await drive(page, 0.35);
     await page.evaluate(() => KoiPond.preview({ sky: "clear", time: "day", ui: 0 }));
-    await drive(page, 1.55);
+    const early = await sampleSun(page, 1.65);
     const midFile = path.join(outDir, step.label + "-to-clear-mid.png");
     const mid = await captureFrame(page, midFile);
-    console.log("  mid haze/rain/fog", mid.snap && mid.snap.look && mid.snap.look.haze, mid.snap && mid.snap.look && mid.snap.look.rain, mid.snap && mid.snap.look && mid.snap.look.fog);
-    await drive(page, 4.4);
+    console.log("  mid haze/rain/fog/day/gain", mid.snap && mid.snap.look && mid.snap.look.haze, mid.snap && mid.snap.look && mid.snap.look.rain, mid.snap && mid.snap.look && mid.snap.look.fog, mid.snap && mid.snap.look && mid.snap.look.dayness, mid.snap && mid.snap.look && mid.snap.look.causticGain);
+    const late = await sampleSun(page, 4.35);
     const afterFile = path.join(outDir, step.label + "-to-clear-after.png");
     const after = await captureFrame(page, afterFile);
     console.log("  after haze/rain", after.snap && after.snap.look && after.snap.look.haze, after.snap && after.snap.look && after.snap.look.rain, "wx", after.snap && after.snap.wx);
@@ -400,8 +515,19 @@ async function runBrowser() {
     if (step.from === "rain" && midLook && midLook.rain < 0.08) {
       failures.push(step.label + " mid: rain already gone (" + midLook.rain + ")");
     }
-    if (step.from !== "rain" && midLook && midLook.haze < 0.03 && midLook.fog < 0.05) {
+    if (step.label !== "night" && step.from !== "rain" && midLook && midLook.haze < 0.03 && midLook.fog < 0.05) {
       failures.push(step.label + " mid: veil already gone (haze=" + midLook.haze + ")");
+    }
+    if (step.label === "night" && midLook && (midLook.dayness < 0.2 || midLook.dayness > 0.9)) {
+      failures.push(step.label + " mid: dayness not mid-ramp (" + midLook.dayness + ")");
+    }
+    if (midLook && afterLook && afterLook.causticGain < midLook.causticGain + 0.05) {
+      failures.push(step.label + " causticGain did not keep rising through the blend");
+    }
+    const ramp = lightPop(early.concat(late));
+    console.log("  light ramp", ramp);
+    if (ramp.pop) {
+      failures.push(step.label + " sunny light popped late (Δhi " + ramp.lateMax.toFixed(3) + " at " + ramp.lateT.toFixed(2) + "s)");
     }
     if (midMetrics.mean < 12) failures.push(step.label + " mid: frame too dark (mean " + midMetrics.mean.toFixed(1) + ")");
     if (afterMetrics.mean < 12) failures.push(step.label + " after: frame too dark (mean " + afterMetrics.mean.toFixed(1) + ")");

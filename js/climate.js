@@ -2,6 +2,8 @@
  *
  * Lighting always follows the actual sun at the chosen lat/lon. Weather is
  * fetched at most every 20 minutes, cached, and never blocks the pond.
+ * Rain streaks mix drizzle / typical / fat drops; a drop that hits the
+ * pond makes a ripple whose strength matches its size.
  */
 (function (global) {
   const SHANGHAI = { lat: 31.2304, lon: 121.4737, tz: "Asia/Shanghai", name: "上海" };
@@ -373,6 +375,7 @@
     let cssH = 1;
     let dpr = 1;
     let dripT = 0;
+    let markT = 0;
     const drops = [];
     const listeners = [];
 
@@ -571,38 +574,122 @@
       canvas.height = Math.max(1, Math.round(h * pixelRatio));
     }
 
-    function spawnDrop() {
+    /* Mix of drizzle / typical / fat drops. Size drives streak width
+     * and the splash impulse when that drop hits the pond. */
+    function rollDropSize() {
+      const u = Math.random();
+      if (u < 0.38) return 0.28 + Math.random() * 0.16;
+      if (u < 0.78) return 0.52 + Math.random() * 0.18;
+      return 0.8 + Math.random() * 0.2;
+    }
+
+    function splashStrength(size) {
+      const s = clamp(size, 0.2, 1);
+      return 0.034 + s * s * 0.16;
+    }
+
+    function spawnDrop(fromTop) {
+      const size = rollDropSize();
       return {
         x: Math.random() * cssW,
-        y: Math.random() * cssH,
-        len: 12 + Math.random() * 18,
-        vy: 420 + Math.random() * 260,
-        vx: -40 - Math.random() * 50,
-        a: 0.28 + Math.random() * 0.32,
+        y: fromTop ? -10 - Math.random() * 36 : Math.random() * cssH,
+        size: size,
+        len: 8 + size * 38,
+        thick: 0.7 + Math.pow(size, 1.55) * 4.4,
+        vy: 320 + size * 380 + Math.random() * 70,
+        vx: -18 - size * 52 - Math.random() * 22,
+        a: 0.34 + size * 0.48,
       };
+    }
+
+    function pickSplashDrop() {
+      if (!drops.length) return null;
+      let w = 0;
+      for (let i = 0; i < drops.length; i++) {
+        const s = drops[i].size;
+        w += 0.12 + s * s;
+      }
+      let r = Math.random() * w;
+      for (let i = 0; i < drops.length; i++) {
+        const s = drops[i].size;
+        r -= 0.12 + s * s;
+        if (r <= 0) return drops[i];
+      }
+      return drops[drops.length - 1];
+    }
+
+    function impactDrop(d, water) {
+      if (!d) return;
+      if (water) {
+        water.impulse(
+          clamp(d.x / cssW, 0.04, 0.96),
+          clamp(d.y / cssH, 0.06, 0.94),
+          splashStrength(d.size)
+        );
+      }
+      const next = spawnDrop(true);
+      d.x = next.x;
+      d.y = next.y;
+      d.size = next.size;
+      d.len = next.len;
+      d.thick = next.thick;
+      d.vy = next.vy;
+      d.vx = next.vx;
+      d.a = next.a;
     }
 
     function tick(dt, look, quality, water, calm) {
       const want = calm ? 0 : Math.round((quality.rainStreaks || 0) * (look.rain || 0));
-      while (drops.length < want) drops.push(spawnDrop());
+      while (drops.length < want) drops.push(spawnDrop(false));
       while (drops.length > want) drops.pop();
       for (let i = 0; i < drops.length; i++) {
         const d = drops[i];
         d.y += d.vy * dt;
         d.x += d.vx * dt;
         if (d.y > cssH + 16 || d.x < -20) {
-          d.x = Math.random() * cssW;
-          d.y = -12;
+          const next = spawnDrop(true);
+          d.x = next.x;
+          d.y = next.y;
+          d.size = next.size;
+          d.len = next.len;
+          d.thick = next.thick;
+          d.vy = next.vy;
+          d.vx = next.vx;
+          d.a = next.a;
         }
       }
-      if (!calm && look.rain > 0 && water && quality.rainDrips) {
-        dripT += dt * look.rain * quality.rainDrips * 2.2;
-        while (dripT >= 1) {
-          dripT -= 1;
-          water.impulse(Math.random() * 0.92 + 0.04, Math.random() * 0.88 + 0.06, 0.07 + Math.random() * 0.06);
+      if (!calm && look.rain > 0) {
+        markT += dt * look.rain * 2.4;
+        while (markT >= 1) {
+          markT -= 1;
+          const d = pickSplashDrop();
+          const size = d ? d.size : rollDropSize();
+          const x = d ? d.x : (0.08 + Math.random() * 0.84) * cssW;
+          const y = d ? d.y : (0.12 + Math.random() * 0.76) * cssH;
+          if (water && water.ring) {
+            water.ring(clamp(x / cssW, 0.04, 0.96), clamp(y / cssH, 0.06, 0.94), splashStrength(size));
+          }
+        }
+        if (water && quality.rainDrips) {
+          dripT += dt * look.rain * quality.rainDrips * 2.8;
+          while (dripT >= 1) {
+            dripT -= 1;
+            const d = pickSplashDrop();
+            if (d) {
+              impactDrop(d, water);
+            } else {
+              const size = rollDropSize();
+              water.impulse(
+                0.08 + Math.random() * 0.84,
+                0.1 + Math.random() * 0.78,
+                splashStrength(size)
+              );
+            }
+          }
         }
       } else {
         dripT = 0;
+        markT = 0;
       }
     }
 
@@ -659,25 +746,33 @@
         ctx.fillRect(0, 0, cssW, cssH);
       }
       if (drops.length) {
-        ctx.strokeStyle = "rgba(214, 228, 232, 0.78)";
-        ctx.lineWidth = 1.35;
         ctx.lineCap = "round";
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
+          const fat = d.size > 0.74;
           ctx.globalAlpha = d.a;
+          ctx.lineWidth = d.thick;
+          ctx.strokeStyle = fat ? "rgba(236, 244, 246, 0.95)" : "rgba(214, 228, 232, 0.82)";
           ctx.beginPath();
           ctx.moveTo(d.x, d.y);
-          ctx.lineTo(d.x - d.vx * 0.018, d.y - d.len);
+          ctx.lineTo(d.x - d.vx * (0.01 + d.size * 0.012), d.y - d.len);
           ctx.stroke();
+          if (fat) {
+            ctx.globalAlpha = d.a * 0.55;
+            ctx.lineWidth = Math.max(0.7, d.thick * 0.32);
+            ctx.strokeStyle = "rgba(255,255,255,0.88)";
+            ctx.beginPath();
+            ctx.moveTo(d.x, d.y);
+            ctx.lineTo(d.x - d.vx * 0.007, d.y - d.len * 0.55);
+            ctx.stroke();
+            ctx.globalAlpha = d.a * 0.8;
+            ctx.fillStyle = "rgba(236, 244, 246, 0.95)";
+            ctx.beginPath();
+            ctx.ellipse(d.x, d.y, 1.15 + d.size * 1.25, 1.7 + d.size * 1.7, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
         ctx.globalAlpha = 1;
-        ctx.fillStyle = "rgba(210, 224, 228, 0.28)";
-        for (let i = 0; i < drops.length; i += 3) {
-          const d = drops[i];
-          ctx.beginPath();
-          ctx.ellipse(d.x, Math.min(cssH - 4, d.y + 8), 3.2, 1.1, 0, 0, Math.PI * 2);
-          ctx.fill();
-        }
       }
     }
 

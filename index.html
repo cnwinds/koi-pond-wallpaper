@@ -47,11 +47,13 @@
           <output id="fpsOut" for="fpsRange">30</output>
           <input id="fpsRange" type="range" min="15" max="60" step="1" value="30" />
         </div>
+        <p class="section">预览天色与天气</p>
+        <p class="hint tight">改下拉框立刻生效，不必改地址栏。选「自动」则跟真实时钟和地点。</p>
         <div class="row">
           <label for="timeSelect">天色 / light</label>
         </div>
         <select id="timeSelect">
-          <option value="">自动 / auto</option>
+          <option value="">自动（真实时钟） / auto</option>
           <option value="day">昼 / day</option>
           <option value="dusk">黄昏 / dusk</option>
           <option value="night">夜 / night</option>
@@ -60,12 +62,15 @@
           <label for="weatherSelect">天气 / weather</label>
         </div>
         <select id="weatherSelect">
-          <option value="">自动 / auto</option>
+          <option value="">自动（实时天气） / auto</option>
           <option value="clear">晴 / clear</option>
           <option value="cloudy">阴 / cloudy</option>
           <option value="rain">雨 / rain</option>
           <option value="fog">雾 / fog</option>
         </select>
+        <div class="actions">
+          <button type="button" id="previewAutoBtn">恢复自动 / reset auto</button>
+        </div>
         <div class="row">
           <label for="latInput">纬度 / lat</label>
           <input id="latInput" type="number" inputmode="decimal" step="0.01" min="-90" max="90" value="31.23" />
@@ -80,7 +85,7 @@
         </div>
         <p class="hint" id="skyNote">上海 · 晴 · 昼</p>
         <p class="hint" id="rendererNote">WebGL2 · mid</p>
-        <p class="hint">窗口失焦会降帧，标签隐藏时暂停。<br />预览：?time=night&amp;weather=rain<br />?fish=8&amp;quality=low&amp;lat=31.23&amp;lon=121.47&amp;ui=0</p>
+        <p class="hint">窗口失焦会降帧，标签隐藏时暂停。<br />也可用 ?time=night&amp;weather=rain<br />?fish=8&amp;quality=low&amp;lat=31.23&amp;lon=121.47&amp;ui=0</p>
       </aside>
     </div>
 

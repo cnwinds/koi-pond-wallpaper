@@ -21,6 +21,7 @@
   const rendererNote = document.getElementById("rendererNote");
   const timeSelect = document.getElementById("timeSelect");
   const weatherSelect = document.getElementById("weatherSelect");
+  const previewAutoBtn = document.getElementById("previewAutoBtn");
 
   const sprites = PondSprites.createLibrary();
   let water = PondWater.create(waterCanvas, config.preset());
@@ -251,14 +252,24 @@
         climate.resolve({ prompt: true, force: true });
       });
     }
+    function applyTimePreview() {
+      config.assign({ time: timeSelect && timeSelect.value ? timeSelect.value : null, hour: null }, "ui");
+    }
+    function applyWeatherPreview() {
+      config.assign({ sky: weatherSelect && weatherSelect.value ? weatherSelect.value : null }, "ui");
+    }
     if (timeSelect) {
-      timeSelect.addEventListener("change", function () {
-        config.assign({ time: timeSelect.value || null, hour: null }, "ui");
-      });
+      timeSelect.addEventListener("change", applyTimePreview);
+      timeSelect.addEventListener("input", applyTimePreview);
     }
     if (weatherSelect) {
-      weatherSelect.addEventListener("change", function () {
-        config.assign({ sky: weatherSelect.value || null }, "ui");
+      weatherSelect.addEventListener("change", applyWeatherPreview);
+      weatherSelect.addEventListener("input", applyWeatherPreview);
+    }
+    if (previewAutoBtn) {
+      previewAutoBtn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        config.assign({ time: null, sky: null, hour: null }, "ui");
       });
     }
     if (panel) {
@@ -381,6 +392,18 @@
     climate: climate,
     feed: function (x, y) {
       world.feed(x, y, water);
+    },
+    preview: function (opts) {
+      opts = opts || {};
+      config.assign(
+        {
+          time: Object.prototype.hasOwnProperty.call(opts, "time") ? opts.time : config.state.time,
+          sky: Object.prototype.hasOwnProperty.call(opts, "sky") ? opts.sky : config.state.sky,
+          hour: Object.prototype.hasOwnProperty.call(opts, "hour") ? opts.hour : config.state.hour,
+          ui: opts.ui != null ? opts.ui : config.state.ui,
+        },
+        "ui"
+      );
     },
   };
 

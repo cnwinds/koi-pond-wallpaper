@@ -95,7 +95,9 @@ body {
   position: absolute;
   right: 16px;
   bottom: 62px;
-  width: min(280px, calc(100vw - 28px));
+  width: min(300px, calc(100vw - 28px));
+  max-height: calc(100vh - 86px);
+  overflow: auto;
   padding: 16px 16px 14px;
   background: var(--moss);
   border: 1px solid var(--line);
@@ -131,6 +133,17 @@ body {
   letter-spacing: 0.08em;
   text-transform: lowercase;
   color: var(--ink-dim);
+}
+
+#panel .section {
+  margin: 14px 0 4px;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: var(--ink);
+}
+
+#panel .hint.tight {
+  margin: 0 0 8px;
 }
 
 #panel .row {

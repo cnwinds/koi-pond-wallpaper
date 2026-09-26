@@ -407,7 +407,7 @@
         resolveIK(f);
 
         if (water && f.rippleT <= 0 && f.mode === "swim" && f.speed > 26) {
-          water.impulse(f.x / cssW, f.y / cssH, 0.07);
+          water.impulse(f.x / cssW, f.y / cssH, 0.16);
           f.rippleT = 1.2 + rng() * 1.4;
         }
       }
@@ -444,22 +444,6 @@
       void quality;
     }
 
-    function drawShadow(f, blur) {
-      const spine = f.spine;
-      const mid = spine[Math.floor(spine.length * 0.45)] || spine[0];
-      ctx.save();
-      ctx.translate(mid.x + 8, mid.y + 12);
-      ctx.rotate(f.heading);
-      ctx.scale(1, 0.4);
-      if (blur) ctx.filter = "blur(7px)";
-      ctx.fillStyle = "rgba(0, 18, 14, 0.28)";
-      ctx.beginPath();
-      ctx.ellipse(0, 0, 58 * f.size, 24 * f.size, 0, 0, TWO_PI);
-      ctx.fill();
-      ctx.filter = "none";
-      ctx.restore();
-    }
-
     function sampleSpine(spine, t) {
       const max = spine.length - 1;
       const u = clamp(t, 0, 1) * max;
@@ -474,39 +458,241 @@
       };
     }
 
+    /* Half-width along a dorsal koi, as a fraction of body length. t=0 nose. */
+    function profileHalf(t) {
+      t = clamp(t, 0, 1);
+      const keys = [
+        [0, 0.016],
+        [0.06, 0.07],
+        [0.16, 0.112],
+        [0.28, 0.12],
+        [0.48, 0.104],
+        [0.7, 0.072],
+        [0.86, 0.042],
+        [1, 0.024],
+      ];
+      for (let i = 1; i < keys.length; i++) {
+        if (t <= keys[i][0]) {
+          const a = keys[i - 1];
+          const b = keys[i];
+          const u = (t - a[0]) / (b[0] - a[0]);
+          const s = u * u * (3 - 2 * u);
+          return a[1] + (b[1] - a[1]) * s;
+        }
+      }
+      return keys[keys.length - 1][1];
+    }
+
+    function buildRibbon(spine, len, samples) {
+      const left = [];
+      const right = [];
+      for (let i = 0; i <= samples; i++) {
+        const t = i / samples;
+        const s = sampleSpine(spine, t);
+        const hw = profileHalf(t) * len;
+        const nx = -Math.sin(s.a);
+        const ny = Math.cos(s.a);
+        left.push({ x: s.x + nx * hw, y: s.y + ny * hw });
+        right.push({ x: s.x - nx * hw, y: s.y - ny * hw });
+      }
+      return { left: left, right: right };
+    }
+
+    function ribbonPath(ribbon) {
+      const L = ribbon.left;
+      const R = ribbon.right;
+      ctx.beginPath();
+      ctx.moveTo(L[0].x, L[0].y);
+      for (let i = 1; i < L.length; i++) ctx.lineTo(L[i].x, L[i].y);
+      for (let i = R.length - 1; i >= 0; i--) ctx.lineTo(R[i].x, R[i].y);
+      ctx.closePath();
+    }
+
+    function drawShadow(f, blur, look) {
+      const len = bodyLength(f);
+      const ribbon = buildRibbon(f.spine, len * 1.04, 14);
+      const night = look ? 1 - look.dayness : 0;
+      ctx.save();
+      ctx.translate(7, 11);
+      if (blur) ctx.filter = "blur(8px)";
+      ctx.fillStyle = "rgba(0, " + Math.round(14 + night * 10) + ", " + Math.round(18 + night * 20) + ", " + (0.26 - night * 0.08).toFixed(3) + ")";
+      ribbonPath(ribbon);
+      ctx.fill();
+      ctx.filter = "none";
+      ctx.restore();
+    }
+
+    function drawTail(f, pal) {
+      const ped = sampleSpine(f.spine, 0.97);
+      const len = bodyLength(f);
+      const spread = 0.86 + Math.sin(f.phase) * 0.1;
+      ctx.save();
+      ctx.translate(ped.x, ped.y);
+      ctx.rotate(ped.a + Math.PI);
+      ctx.globalAlpha = 0.78;
+      ctx.fillStyle = pal.edge;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(len * 0.07, -len * 0.04, len * 0.2, -len * 0.16 * spread);
+      ctx.quadraticCurveTo(len * 0.12, -len * 0.02, len * 0.02, 0);
+      ctx.quadraticCurveTo(len * 0.12, len * 0.02, len * 0.2, len * 0.16 * spread);
+      ctx.quadraticCurveTo(len * 0.07, len * 0.04, 0, 0);
+      ctx.fill();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = pal.base;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(len * 0.08, -len * 0.02, len * 0.14, -len * 0.08 * spread);
+      ctx.quadraticCurveTo(len * 0.08, 0, len * 0.14, len * 0.08 * spread);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawFins(f, pal) {
+      const len = bodyLength(f);
+      const flap = Math.sin(f.phase * 1.15) * 0.2;
+      const pec = sampleSpine(f.spine, 0.2);
+      const hw = profileHalf(0.2) * len;
+      for (let side = -1; side <= 1; side += 2) {
+        ctx.save();
+        ctx.translate(pec.x, pec.y);
+        ctx.rotate(pec.a);
+        ctx.translate(-len * 0.01, side * hw * 0.92);
+        ctx.rotate(side * (0.72 + flap));
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = pal.edge;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(len * 0.05, side * len * 0.02, len * 0.03, side * len * 0.13);
+        ctx.quadraticCurveTo(-len * 0.03, side * len * 0.07, 0, 0);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      const d0 = sampleSpine(f.spine, 0.3);
+      const d1 = sampleSpine(f.spine, 0.52);
+      ctx.save();
+      ctx.globalAlpha = 0.32;
+      ctx.strokeStyle = pal.edge;
+      ctx.lineWidth = 2.1 * f.size;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(d0.x - Math.sin(d0.a) * 2, d0.y + Math.cos(d0.a) * 2);
+      ctx.quadraticCurveTo(
+        (d0.x + d1.x) * 0.5 - Math.sin(d0.a) * 6 * f.size,
+        (d0.y + d1.y) * 0.5 + Math.cos(d0.a) * 6 * f.size,
+        d1.x,
+        d1.y
+      );
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawEyes(f, pal) {
+      const head = sampleSpine(f.spine, 0.055);
+      const nose = sampleSpine(f.spine, 0.012);
+      const len = bodyLength(f);
+      const hw = profileHalf(0.055) * len;
+      const nx = -Math.sin(head.a);
+      const ny = Math.cos(head.a);
+      const r = 1.55 * f.size;
+      for (let side = -1; side <= 1; side += 2) {
+        const ex = head.x + nx * hw * 0.58 * side + Math.cos(head.a) * len * 0.01;
+        const ey = head.y + ny * hw * 0.58 * side + Math.sin(head.a) * len * 0.01;
+        ctx.fillStyle = pal.eye;
+        ctx.beginPath();
+        ctx.arc(ex, ey, r, 0, TWO_PI);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.45)";
+        ctx.beginPath();
+        ctx.arc(ex - r * 0.25, ey - r * 0.28, r * 0.32, 0, TWO_PI);
+        ctx.fill();
+        ctx.strokeStyle = pal.edge;
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = 0.7 * f.size;
+        ctx.beginPath();
+        ctx.moveTo(nose.x + nx * hw * 0.25 * side, nose.y + ny * hw * 0.25 * side);
+        ctx.quadraticCurveTo(
+          nose.x + Math.cos(nose.a) * len * 0.04 + nx * hw * 0.45 * side,
+          nose.y + Math.sin(nose.a) * len * 0.04 + ny * hw * 0.45 * side,
+          nose.x + Math.cos(nose.a) * len * 0.07 + nx * hw * 0.2 * side,
+          nose.y + Math.sin(nose.a) * len * 0.07 + ny * hw * 0.2 * side
+        );
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+
     function drawFish(f, slices) {
       const tex = f.sprite.canvas;
-      const n = Math.max(6, slices);
+      const pal = f.sprite.pal || { base: "#f3efe4", edge: "#d0c8bc", eye: "#1a1612" };
+      const n = Math.max(16, slices);
       const bodyW = bodyLength(f);
-      const bodyH = bodyW * (tex.height / tex.width);
       const spine = f.spine;
-      const dw = (bodyW / n) * 2.15;
+      const ribbon = buildRibbon(spine, bodyW, Math.max(22, n));
+
+      drawTail(f, pal);
+      drawFins(f, pal);
+
       ctx.save();
-      ctx.globalAlpha = 0.96;
+      ribbonPath(ribbon);
+      ctx.fillStyle = pal.base;
+      ctx.fill();
+      ctx.clip();
+
+      const dw = (bodyW / n) * 2.7;
       for (let i = 0; i < n; i++) {
-        const seg = sampleSpine(spine, i / (n - 1));
+        const t = (i + 0.5) / n;
+        const seg = sampleSpine(spine, t);
+        const hw = profileHalf(t) * bodyW * 1.12;
         const sx = tex.width * (1 - (i + 1) / n);
-        const sw = tex.width / n;
+        const sw = Math.max(1, tex.width / n);
         ctx.save();
         ctx.translate(seg.x, seg.y);
         ctx.rotate(seg.a);
-        ctx.drawImage(tex, sx, 0, sw, tex.height, -dw * 0.42, -bodyH / 2, dw, bodyH);
+        ctx.drawImage(tex, sx, 0, sw, tex.height, -dw * 0.42, -hw, dw, hw * 2);
         ctx.restore();
       }
       ctx.restore();
+
+      ctx.save();
+      ctx.strokeStyle = "rgba(20,18,14,0.16)";
+      ctx.lineWidth = 0.9;
+      ribbonPath(ribbon);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = "rgba(255,255,255,0.16)";
+      ctx.lineWidth = 2.4 * f.size;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      for (let i = 0; i < spine.length - 2; i++) {
+        const p = spine[i];
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      drawEyes(f, pal);
     }
 
     function sliceCount(quality) {
       if (quality && quality.spineSlices) return quality.spineSlices;
-      return 8;
+      return 24;
     }
 
-    function render(quality) {
+    function render(quality, look) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
       ctx.clearRect(0, 0, cssW, cssH);
 
       const slices = sliceCount(quality);
-      for (let i = 0; i < fish.length; i++) drawShadow(fish[i], quality && quality.blurShadow);
+      for (let i = 0; i < fish.length; i++) drawShadow(fish[i], quality && quality.blurShadow, look);
 
       const order = fish.slice().sort(function (a, b) {
         return a.y - b.y;

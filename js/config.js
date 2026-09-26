@@ -12,9 +12,10 @@
       pads: 3,
       blurShadow: false,
       ambientWaves: 0.55,
-      spineSlices: 6,
+      spineSlices: 16,
       rainStreaks: 0,
-      rainDrips: 0.18,
+      rainDrips: 0.35,
+      lifeDistort: 0.05,
       power: "low-power",
     },
     mid: {
@@ -25,9 +26,10 @@
       pads: 5,
       blurShadow: true,
       ambientWaves: 1,
-      spineSlices: 8,
-      rainStreaks: 20,
-      rainDrips: 0.7,
+      spineSlices: 24,
+      rainStreaks: 72,
+      rainDrips: 1.6,
+      lifeDistort: 0.08,
       power: "low-power",
     },
     high: {
@@ -38,9 +40,10 @@
       pads: 7,
       blurShadow: true,
       ambientWaves: 1.15,
-      spineSlices: 10,
-      rainStreaks: 36,
-      rainDrips: 1.1,
+      spineSlices: 32,
+      rainStreaks: 130,
+      rainDrips: 2.4,
+      lifeDistort: 0.1,
       power: "default",
     },
   };
@@ -55,12 +58,15 @@
     lon: 121.4737,
     tz: "Asia/Shanghai",
     sky: null,
+    time: null,
+    hour: null,
     placeMode: "auto",
     placeSource: "default",
     city: "",
   };
 
   const SKY_NAMES = ["clear", "cloudy", "rain", "fog"];
+  const TIME_NAMES = ["day", "dusk", "dawn", "night"];
 
   function clamp(n, a, b) {
     return Math.min(b, Math.max(a, n));
@@ -77,11 +83,27 @@
   }
 
   function parseSky(value) {
+    if (value == null || value === "" || value === "auto") return null;
     const key = String(value || "").toLowerCase();
     if (key === "overcast") return "cloudy";
     if (key === "mist") return "fog";
     if (SKY_NAMES.indexOf(key) >= 0) return key;
     return null;
+  }
+
+  function parseTime(value) {
+    if (value == null || value === "" || value === "auto") return null;
+    const key = String(value).toLowerCase();
+    if (key === "dawn") return "dusk";
+    if (TIME_NAMES.indexOf(key) >= 0) return key === "dawn" ? "dusk" : key;
+    return null;
+  }
+
+  function parseHour(value) {
+    if (value == null || value === "") return null;
+    const n = parseFloat(value);
+    if (Number.isNaN(n)) return null;
+    return clamp(n, 0, 24);
   }
 
   function parseCoord(value, lo, hi) {
@@ -145,8 +167,12 @@
     if (q.has("tz") && q.get("tz")) next.tz = q.get("tz");
     if (q.has("weather") || q.has("sky")) {
       const sky = parseSky(q.get("weather") || q.get("sky"));
-      if (sky) next.sky = sky;
+      next.sky = sky;
     }
+    if (q.has("time") || q.has("light")) {
+      next.time = parseTime(q.get("time") || q.get("light"));
+    }
+    if (q.has("hour")) next.hour = parseHour(q.get("hour"));
     if (q.has("lat") || q.has("lon")) next.placeMode = "manual";
     if (q.get("place") === "auto") next.placeMode = "auto";
     if (q.get("place") === "manual") next.placeMode = "manual";
@@ -168,6 +194,8 @@
     if (state.lon == null) state.lon = defaults.lon;
     state.tz = state.tz || defaults.tz;
     state.sky = parseSky(state.sky);
+    state.time = parseTime(state.time);
+    state.hour = parseHour(state.hour);
     if (query.placeMode === "manual" || query.placeMode === "auto") {
       state.placeMode = query.placeMode;
     } else if (stored.placeMode === "manual" || stored.placeMode === "auto") {
@@ -246,6 +274,20 @@
           changed = true;
         }
       }
+      if (Object.prototype.hasOwnProperty.call(partial, "time")) {
+        const time = parseTime(partial.time);
+        if (time !== state.time) {
+          state.time = time;
+          changed = true;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(partial, "hour")) {
+        const hour = parseHour(partial.hour);
+        if (hour !== state.hour) {
+          state.hour = hour;
+          changed = true;
+        }
+      }
       if (partial.placeMode === "auto" || partial.placeMode === "manual") {
         if (partial.placeMode !== state.placeMode) {
           state.placeMode = partial.placeMode;
@@ -300,6 +342,15 @@
           "lively"
         );
       } else if (name === "tz" || name === "timezone") assign({ tz: val }, "lively");
+      else if (name === "previewTime") {
+        const times = [null, "day", "dusk", "night"];
+        if (typeof val === "number") assign({ time: times[clamp(val | 0, 0, 3)] }, "lively");
+        else assign({ time: parseTime(val) }, "lively");
+      } else if (name === "previewWeather") {
+        const skies = [null, "clear", "cloudy", "rain", "fog"];
+        if (typeof val === "number") assign({ sky: skies[clamp(val | 0, 0, 4)] }, "lively");
+        else assign({ sky: parseSky(val) }, "lively");
+      }
     }
 
     function queryString() {
@@ -314,6 +365,8 @@
         q.set("place", "manual");
       }
       if (state.sky) q.set("weather", state.sky);
+      if (state.time) q.set("time", state.time);
+      if (state.hour != null) q.set("hour", String(state.hour));
       return q.toString();
     }
 
@@ -338,6 +391,8 @@
     create,
     parseQuality,
     parseSky,
+    parseTime,
+    parseHour,
     QUALITY_NAMES,
     STORE_KEY,
   };

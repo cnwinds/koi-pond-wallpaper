@@ -41,6 +41,10 @@ body {
   pointer-events: none;
 }
 
+#pond.is-composite #life {
+  opacity: 0;
+}
+
 #wx {
   z-index: 2;
 }

@@ -19,6 +19,8 @@
   const placeGeoBtn = document.getElementById("placeGeoBtn");
   const skyNote = document.getElementById("skyNote");
   const rendererNote = document.getElementById("rendererNote");
+  const timeSelect = document.getElementById("timeSelect");
+  const weatherSelect = document.getElementById("weatherSelect");
 
   const sprites = PondSprites.createLibrary();
   let water = PondWater.create(waterCanvas, config.preset());
@@ -29,6 +31,8 @@
     lon: config.state.lon,
     tz: config.state.tz,
     sky: config.state.sky,
+    time: config.state.time,
+    hour: config.state.hour,
     placeMode: config.state.placeMode,
     placeSource: config.state.placeSource,
     city: config.state.city,
@@ -98,6 +102,8 @@
         (water.kind() === "webgl2" ? "WebGL2" : "Canvas 2D") + " · " + s.quality;
     }
     if (skyNote) skyNote.textContent = climate.caption();
+    if (timeSelect) timeSelect.value = s.time || "";
+    if (weatherSelect) weatherSelect.value = s.sky || "";
   }
 
   let lastBg = "";
@@ -105,9 +111,9 @@
   function applyCssGrade(look) {
     const e = look.exposure;
     const t = look.tint;
-    const r = Math.round(8 * t[0] * e);
-    const g = Math.round(22 * t[1] * e);
-    const b = Math.round(20 * t[2] * e);
+    const r = Math.round(10 * t[0] * e);
+    const g = Math.round(26 * t[1] * e);
+    const b = Math.round(28 * t[2] * e);
     const bg = "rgb(" + r + ", " + g + ", " + b + ")";
     if (bg === lastBg) return;
     lastBg = bg;
@@ -143,6 +149,7 @@
     climate.tick(dt, look, preset, water, calm);
     water.update(dt);
     world.update(dt, water, preset, look);
+    world.render(preset, look);
     water.render(cssW, cssH, pixelW, pixelH, time, {
       caustics: preset.caustics && !calm && look.causticGain > 0.04,
       ambient: ambient,
@@ -150,8 +157,10 @@
       tint: look.tint,
       causticGain: look.causticGain,
       haze: look.haze,
+      dayness: look.dayness,
+      distort: calm ? preset.lifeDistort * 0.35 : preset.lifeDistort,
+      life: lifeCanvas,
     });
-    world.render(preset);
     climate.render(look);
     applyCssGrade(look);
 
@@ -242,6 +251,16 @@
         climate.resolve({ prompt: true, force: true });
       });
     }
+    if (timeSelect) {
+      timeSelect.addEventListener("change", function () {
+        config.assign({ time: timeSelect.value || null, hour: null }, "ui");
+      });
+    }
+    if (weatherSelect) {
+      weatherSelect.addEventListener("change", function () {
+        config.assign({ sky: weatherSelect.value || null }, "ui");
+      });
+    }
     if (panel) {
       panel.addEventListener("click", function (ev) {
         ev.stopPropagation();
@@ -274,6 +293,8 @@
       lon: state.lon,
       tz: state.tz,
       sky: state.sky,
+      time: state.time,
+      hour: state.hour,
       placeMode: state.placeMode,
       source: state.placeSource,
       city: state.city,
@@ -368,6 +389,14 @@
   syncHud();
   bindHud();
   showHint();
+  if (document.getElementById("pond") && water.compositesLife && water.compositesLife()) {
+    document.getElementById("pond").classList.add("is-composite");
+  }
   climate.start();
   start();
+  if (config.state.demo) {
+    setTimeout(function () {
+      world.feed(cssW * 0.48, cssH * 0.46, water);
+    }, 240);
+  }
 })(window);

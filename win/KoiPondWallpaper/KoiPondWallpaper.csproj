@@ -8,8 +8,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>koi-pond-wallpaper</AssemblyName>
     <RootNamespace>KoiPondWallpaper</RootNamespace>
-    <Version>0.3.3</Version>
-    <InformationalVersion>0.3.3</InformationalVersion>
+    <Version>0.3.2</Version>
+    <InformationalVersion>0.3.2</InformationalVersion>
     <Authors>cnwinds</Authors>
     <Product>锦鲤池 / Koi Pond Wallpaper</Product>
     <Description>Zen koi pond live wallpaper for Windows.</Description>

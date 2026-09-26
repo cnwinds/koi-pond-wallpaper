@@ -680,7 +680,7 @@ void main() {
         if (rainAmt > 0.04) rainSettle = 2.2;
         else rainSettle = Math.max(0, rainSettle - dt);
         let d = damp;
-        if (rainAmt > 0.05) d = Math.min(d, 0.981);
+        if (rainAmt > 0.05) d = Math.min(d, 0.985);
         if (rainSettle > 0 && rainAmt < 0.4) d = Math.min(d, 0.965);
         if (impl.step) {
           impl.step(d);

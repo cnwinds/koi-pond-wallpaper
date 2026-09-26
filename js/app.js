@@ -184,7 +184,12 @@
       }
     }
     const rainLeft = water.rainSettleLeft ? water.rainSettleLeft() : 0;
-    const rippleCalm = Math.min(1, veil * 0.95 + (rainLeft > 0 ? 0.28 : 0));
+    const rainingHard = (look.rain || 0) > 0.08;
+    /* Do not flatten ripples while rain is falling — refs are hit flashes
+       plus expanding rings. Calm only while leftover weather settles to clear. */
+    const rippleCalm = rainingHard
+      ? 0
+      : Math.min(1, Math.max(look.haze || 0, look.fog || 0) * 0.7 + (rainLeft > 0 ? 0.32 : 0));
     const causticsOn =
       preset.caustics && !calm && look.causticGain > 0.15 && veil < 0.08 && rippleCalm < 0.35;
     water.update(dt);

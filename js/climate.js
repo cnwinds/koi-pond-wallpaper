@@ -665,7 +665,7 @@
         tx: Math.random() * cssW,
         ty: Math.random() * cssH,
         z: fromSky ? 1 : Math.random(),
-        vz: 0.88 + Math.random() * 0.42,
+        vz: 1.05 + Math.random() * 0.38,
         size: 0.68 + Math.random() * 0.74,
         slantX: slant.x * (0.82 + Math.random() * 0.36),
         slantY: slant.y * (0.82 + Math.random() * 0.36),
@@ -678,7 +678,7 @@
       d.tx = Math.random() * cssW;
       d.ty = Math.random() * cssH;
       d.z = 0.82 + Math.random() * 0.18;
-      d.vz = 0.88 + Math.random() * 0.42;
+      d.vz = 1.05 + Math.random() * 0.38;
       d.size = 0.68 + Math.random() * 0.74;
       d.slantX = slant.x * (0.82 + Math.random() * 0.36);
       d.slantY = slant.y * (0.82 + Math.random() * 0.36);
@@ -708,8 +708,8 @@
           hits.push({ x: d.tx, y: d.ty, age: 0, size: d.size });
           if (hits.length > 36) hits.shift();
           if (!calm && water) {
-            const mag = 0.04 + d.size * 0.088;
-            const rad = 2400 - (d.size - 0.68) * 1600;
+            const mag = 0.06 + d.size * 0.11;
+            const rad = 1900 - (d.size - 0.68) * 1200;
             water.impulse(d.tx / cssW, d.ty / cssH, mag, rad);
           }
           recycleDrop(d, look);
@@ -717,7 +717,7 @@
       }
       for (let i = hits.length - 1; i >= 0; i--) {
         hits[i].age += dt;
-        if (hits[i].age > 0.22) hits.splice(i, 1);
+        if (hits[i].age > 0.28) hits.splice(i, 1);
       }
       dripT = 0;
       return look;
@@ -772,19 +772,21 @@
         ctx.fillStyle = "rgba(226, 234, 238, 1)";
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
-          if (d.z < 0.05) continue;
+          if (d.z < 0.06 || d.z > 0.92) continue;
+          /* Sparse airborne hints — most of the look is the splash/ripple. */
+          if ((i + ((d.tx + d.ty) | 0)) % 3 === 0) continue;
           const alt = clamp(d.z, 0, 1);
-          const foreshort = 0.3 + 0.7 * alt;
+          const foreshort = 0.28 + 0.72 * alt;
           const head = projectDrop(d, d.z);
-          const tail = projectDrop(d, Math.min(1, d.z + 0.09 * d.size));
+          const tail = projectDrop(d, Math.min(1, d.z + 0.1 * d.size));
           const dx = head.x - tail.x;
           const dy = head.y - tail.y;
           const len = Math.hypot(dx, dy) || 1;
           const nx = -dy / len;
           const ny = dx / len;
-          const tailW = (0.7 + 0.55 * d.size) * foreshort;
-          const headW = (0.16 + 0.18 * d.size) * (0.4 + 0.6 * alt);
-          ctx.globalAlpha = d.a * (0.2 + 0.38 * alt);
+          const tailW = (0.85 + 0.55 * d.size) * foreshort;
+          const headW = (0.14 + 0.16 * d.size) * (0.35 + 0.55 * alt);
+          ctx.globalAlpha = d.a * (0.18 + 0.36 * alt);
           ctx.beginPath();
           ctx.moveTo(tail.x + nx * tailW, tail.y + ny * tailW);
           ctx.lineTo(head.x + nx * headW, head.y + ny * headW);
@@ -792,21 +794,18 @@
           ctx.lineTo(tail.x - nx * tailW, tail.y - ny * tailW);
           ctx.closePath();
           ctx.fill();
-          ctx.globalAlpha = d.a * (0.14 + 0.24 * alt);
-          ctx.beginPath();
-          ctx.arc(head.x, head.y, (0.28 + 0.32 * d.size) * foreshort, 0, Math.PI * 2);
-          ctx.fill();
         }
         ctx.globalAlpha = 1;
       }
       if (hits.length) {
         for (let i = 0; i < hits.length; i++) {
           const hit = hits[i];
-          const t = clamp(hit.age / 0.2, 0, 1);
-          ctx.globalAlpha = 0.5 * (1 - t);
-          ctx.fillStyle = "rgba(230, 238, 242, 1)";
+          const t = clamp(hit.age / 0.28, 0, 1);
+          const sz = hit.size || 1;
+          ctx.globalAlpha = 0.42 * (1 - t);
+          ctx.fillStyle = "rgba(232, 240, 244, 1)";
           ctx.beginPath();
-          ctx.arc(hit.x, hit.y, 2.1 + (hit.size || 1) * 1.4, 0, Math.PI * 2);
+          ctx.arc(hit.x, hit.y, 1.4 + sz * 1.1 * (1 - t * 0.35), 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.globalAlpha = 1;

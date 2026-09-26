@@ -61,6 +61,7 @@ function staticChecks() {
   assert(!app.includes("lastBlendKey"), "app.js still reallocates on blendKey", failures);
   assert(app.includes("recoverSim"), "app.js never calls recoverSim after settle", failures);
   assert(app.includes("rippleCalm"), "app.js does not pass rippleCalm", failures);
+  assert(app.includes("rainingHard"), "rippleCalm must stay off while rain is falling", failures);
   assert(app.includes("fog: look.fog"), "app.js does not pass fog", failures);
   assert(css.includes("#wx.is-idle"), "css missing #wx.is-idle hide rule", failures);
 
@@ -333,7 +334,7 @@ async function runBrowser() {
     console.log("path", step.label + "→clear");
     await snapSky(page, step.from);
     if (step.from === "rain") {
-      await drive(page, 0.45);
+      await drive(page, 1.05);
       const motion = await page.evaluate(() => {
         const a = KoiPond.climate.debugDrops ? KoiPond.climate.debugDrops() : [];
         const dt = 0.05;

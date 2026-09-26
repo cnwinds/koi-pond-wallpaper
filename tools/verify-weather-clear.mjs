@@ -50,7 +50,7 @@ function staticChecks() {
   assert(water.includes("recoverSim:"), "PondWater missing recoverSim (quality-like FBO rebuild)", failures);
   assert(!/desynchronized:\s*true/.test(water), "water fallback still uses desynchronized:true", failures);
 
-  assert(climate.includes("Rain hits only"), "climate.render is not documented as rain-only", failures);
+  assert(climate.includes("Airborne streaks only"), "climate.render is not documented as streak-only", failures);
   assert(climate.includes("releaseOverlay"), "wx idle release missing", failures);
   assert(climate.includes("d.tx - z * d.slantX"), "rain projectDrop must subtract slant (fall onto water, not rise)", failures);
   assert(climate.includes("d.phase"), "rain streaks missing opacity pulse", failures);
@@ -70,7 +70,8 @@ function staticChecks() {
   assert(css.includes("#wx.is-idle"), "css missing #wx.is-idle hide rule", failures);
 
   const csproj = read("win/KoiPondWallpaper/KoiPondWallpaper.csproj");
-  assert(csproj.includes("<Version>0.3.8</Version>"), "csproj not bumped to 0.3.8", failures);
+  assert(!climate.includes("rgba(232, 240, 244"), "hit flashes still draw white dots", failures);
+  assert(csproj.includes("<Version>0.3.9</Version>"), "csproj not bumped to 0.3.9", failures);
   return failures;
 }
 
@@ -413,9 +414,14 @@ async function runBrowser() {
       await drive(page, 1.05);
       const motion = await page.evaluate(() => {
         const a = KoiPond.climate.debugDrops ? KoiPond.climate.debugDrops() : [];
+        /* Two frames: a 0.25s window recycles drops that cross in ~0.25s,
+           so the tracker would only see the slowest survivors. Scale Δz
+           back to a 0.25s equivalent for the v0.3.8 comparison. */
         const dt = 0.05;
-        for (let i = 0; i < 5; i++) KoiPond.drawFrame(dt);
+        const frames = 2;
+        for (let i = 0; i < frames; i++) KoiPond.drawFrame(dt);
         const b = KoiPond.climate.debugDrops ? KoiPond.climate.debugDrops() : [];
+        const scale = 0.25 / (dt * frames);
         const dys = [];
         for (let i = 0; i < a.length; i++) {
           const da = a[i];
@@ -466,7 +472,7 @@ async function runBrowser() {
           aboveHit: aboveHit,
           count: a.length,
           slope: slopeN ? slopeSum / slopeN : 0,
-          meanDz: dzN ? dzSum / dzN : 0,
+          meanDz: dzN ? (dzSum / dzN) * scale : 0,
           fadeLo: fadeLo,
           fadeHi: fadeHi,
         };
@@ -479,12 +485,31 @@ async function runBrowser() {
       if (!(motion.slope > 0.12 && motion.slope < 0.62)) {
         failures.push("rain: slant not steep (lateral/vertical " + motion.slope + ")");
       }
-      if (motion.meanDz < 0.28) failures.push("rain: fall too slow (Δz " + motion.meanDz + " / 0.25s)");
+      if (motion.meanDz < 0.7) failures.push("rain: fall not faster than v0.3.8 (Δz " + motion.meanDz + " / 0.25s)");
       if (motion.fadeLo < 4 || motion.fadeHi < 4) {
         failures.push("rain: opacity not pulsing (low " + motion.fadeLo + ", high " + motion.fadeHi + ")");
       }
       const rainFile = path.join(outDir, "rain-settled.png");
       await captureFrame(page, rainFile);
+      const specks = await page.evaluate(() => {
+        const wx = document.getElementById("wx");
+        if (!wx || wx.width < 8) return { bright: 0, w: wx ? wx.width : 0, h: wx ? wx.height : 0 };
+        const tmp = document.createElement("canvas");
+        tmp.width = wx.width;
+        tmp.height = wx.height;
+        const ctx = tmp.getContext("2d", { willReadFrequently: true });
+        ctx.drawImage(wx, 0, 0);
+        const data = ctx.getImageData(0, 0, tmp.width, tmp.height).data;
+        let bright = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i] > 210 && data[i + 1] > 210 && data[i + 2] > 210 && data[i + 3] > 90) bright++;
+        }
+        return { bright: bright, w: tmp.width, h: tmp.height };
+      });
+      console.log("  wx specks", specks);
+      if (specks.bright > 40) {
+        failures.push("rain: opaque white specks (" + specks.bright + ")");
+      }
     }
     await drive(page, 0.35);
     await page.evaluate(() => KoiPond.preview({ sky: "clear", time: "day", ui: 0 }));

@@ -52,6 +52,8 @@ function staticChecks() {
 
   assert(climate.includes("Rain hits only"), "climate.render is not documented as rain-only", failures);
   assert(climate.includes("releaseOverlay"), "wx idle release missing", failures);
+  assert(climate.includes("d.tx - z * d.slantX"), "rain projectDrop must subtract slant (fall onto water, not rise)", failures);
+  assert(!climate.includes("d.tx + z * d.slantX"), "rain projectDrop still adds z*slant (rising motion)", failures);
   assert(!climate.includes("rgba(255, 132, 64"), "climate.render still paints dusk fill", failures);
   assert(!climate.includes("rgba(176, 192, 190"), "climate.render still paints haze gradient", failures);
   assert(!climate.includes("rgba(2, 8, 22"), "climate.render still paints night fill", failures);
@@ -330,6 +332,42 @@ async function runBrowser() {
   for (const step of paths) {
     console.log("path", step.label + "→clear");
     await snapSky(page, step.from);
+    if (step.from === "rain") {
+      await drive(page, 0.45);
+      const motion = await page.evaluate(() => {
+        const a = KoiPond.climate.debugDrops ? KoiPond.climate.debugDrops() : [];
+        const dt = 0.05;
+        for (let i = 0; i < 5; i++) KoiPond.drawFrame(dt);
+        const b = KoiPond.climate.debugDrops ? KoiPond.climate.debugDrops() : [];
+        const dys = [];
+        for (let i = 0; i < a.length; i++) {
+          const da = a[i];
+          for (let j = 0; j < b.length; j++) {
+            const db = b[j];
+            if (Math.abs(db.tx - da.tx) > 0.2 || Math.abs(db.ty - da.ty) > 0.2) continue;
+            if (db.z >= da.z - 1e-4) continue;
+            dys.push(db.y - da.y);
+            break;
+          }
+        }
+        let sum = 0;
+        for (let i = 0; i < dys.length; i++) sum += dys[i];
+        const aboveHit = a.filter(function (d) {
+          return d.z > 0.55 && d.y < d.ty - 2;
+        }).length;
+        return {
+          n: dys.length,
+          meanDy: dys.length ? sum / dys.length : 0,
+          aboveHit: aboveHit,
+          count: a.length,
+        };
+      });
+      console.log("  rain motion", motion);
+      if (motion.count < 8) failures.push("rain: too few drops to judge motion");
+      if (motion.n < 5) failures.push("rain: could not track falling drops");
+      if (motion.meanDy <= 0.15) failures.push("rain: mean dy " + motion.meanDy + " — not falling down");
+      if (motion.aboveHit < 2) failures.push("rain: high-z drops are not above their hit points");
+    }
     await drive(page, 0.35);
     await page.evaluate(() => KoiPond.preview({ sky: "clear", time: "day", ui: 0 }));
     await drive(page, 1.55);

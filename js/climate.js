@@ -4,9 +4,10 @@
  * fetched at most every 20 minutes, cached, and never blocks the pond.
  * Displayed light/weather eases toward the target so previews and live
  * updates fade (rain starts/stops, day↔night) instead of snapping.
- * Rain uses an oblique 3D projection: drops travel along a slanted
- * fall toward a water-plane hit, then splash. Not screen-Y streaks.
- * Night/dusk/haze/fog grade in the water shader; this canvas is rain only.
+ * Rain uses an oblique 3D projection: z=1 is altitude (near camera,
+ * higher on screen), z=0 is the water hit. Drops fall downward onto
+ * the pond (never rise). Streaks taper 上大下小. This canvas is rain
+ * only; night/dusk/haze/fog grade in the water shader.
  */
 (function (global) {
   const SHANGHAI = { lat: 31.2304, lon: 121.4737, tz: "Asia/Shanghai", name: "上海" };
@@ -651,8 +652,10 @@
     function stormSlant(look) {
       const wind = look && look.wind ? look.wind : { x: -4, y: 3.2 };
       return {
-        x: 0.17 + clamp(wind.x / 48, -0.1, 0.1),
-        y: 0.24 + clamp(wind.y / 48, -0.1, 0.1),
+        x: 0.09 + clamp(wind.x / 56, -0.07, 0.07),
+        /* Always fall down the screen toward the hit. Positive y here is
+           how far above the splash the drop starts (project subtracts z). */
+        y: 0.12 + clamp(Math.abs(wind.y) / 70, 0, 0.06),
       };
     }
 
@@ -666,7 +669,7 @@
         size: 0.68 + Math.random() * 0.74,
         slantX: slant.x * (0.82 + Math.random() * 0.36),
         slantY: slant.y * (0.82 + Math.random() * 0.36),
-        a: 0.42 + Math.random() * 0.34,
+        a: 0.22 + Math.random() * 0.2,
       };
     }
 
@@ -679,14 +682,15 @@
       d.size = 0.68 + Math.random() * 0.74;
       d.slantX = slant.x * (0.82 + Math.random() * 0.36);
       d.slantY = slant.y * (0.82 + Math.random() * 0.36);
-      d.a = 0.42 + Math.random() * 0.34;
+      d.a = 0.22 + Math.random() * 0.2;
     }
 
     function projectDrop(d, z) {
       if (z == null) z = d.z;
+      /* High z sits above/aside the hit; falling reduces z so y increases. */
       return {
-        x: d.tx + z * d.slantX * cssW,
-        y: d.ty + z * d.slantY * cssH,
+        x: d.tx - z * d.slantX * cssW,
+        y: d.ty - z * d.slantY * cssH,
       };
     }
 
@@ -765,23 +769,32 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssW, cssH);
       if (drops.length) {
-        ctx.lineCap = "round";
-        ctx.strokeStyle = "rgba(226, 236, 240, 0.92)";
-        ctx.fillStyle = "rgba(232, 240, 244, 1)";
+        ctx.fillStyle = "rgba(226, 234, 238, 1)";
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
-          const near = clamp(1 - d.z, 0, 1);
-          const ease = near * near * (3 - 2 * near);
+          if (d.z < 0.05) continue;
+          const alt = clamp(d.z, 0, 1);
+          const foreshort = 0.3 + 0.7 * alt;
           const head = projectDrop(d, d.z);
-          const tail = projectDrop(d, Math.min(1, d.z + 0.11 * d.size));
-          ctx.globalAlpha = d.a * (0.38 + 0.62 * ease);
-          ctx.lineWidth = (1.05 + 1.15 * d.size) * (0.7 + 0.5 * ease);
+          const tail = projectDrop(d, Math.min(1, d.z + 0.05 * d.size));
+          const dx = head.x - tail.x;
+          const dy = head.y - tail.y;
+          const len = Math.hypot(dx, dy) || 1;
+          const nx = -dy / len;
+          const ny = dx / len;
+          const tailW = (0.55 + 0.45 * d.size) * foreshort;
+          const headW = (0.12 + 0.16 * d.size) * (0.4 + 0.6 * alt);
+          ctx.globalAlpha = d.a * (0.14 + 0.32 * alt);
           ctx.beginPath();
-          ctx.moveTo(tail.x, tail.y);
-          ctx.lineTo(head.x, head.y);
-          ctx.stroke();
+          ctx.moveTo(tail.x + nx * tailW, tail.y + ny * tailW);
+          ctx.lineTo(head.x + nx * headW, head.y + ny * headW);
+          ctx.lineTo(head.x - nx * headW, head.y - ny * headW);
+          ctx.lineTo(tail.x - nx * tailW, tail.y - ny * tailW);
+          ctx.closePath();
+          ctx.fill();
+          ctx.globalAlpha = d.a * (0.1 + 0.2 * alt);
           ctx.beginPath();
-          ctx.arc(head.x, head.y, (0.85 + 1.35 * d.size) * (0.5 + 0.75 * ease), 0, Math.PI * 2);
+          ctx.arc(head.x, head.y, (0.22 + 0.28 * d.size) * foreshort, 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.globalAlpha = 1;
@@ -814,6 +827,12 @@
       render,
       snap,
       overlayBusy,
+      debugDrops: function () {
+        return drops.map(function (d) {
+          const p = projectDrop(d, d.z);
+          return { x: p.x, y: p.y, z: d.z, tx: d.tx, ty: d.ty, size: d.size };
+        });
+      },
       display: function () {
         return blend ? paintLook(sample(), blend) : sample();
       },

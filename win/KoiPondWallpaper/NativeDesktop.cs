@@ -115,6 +115,8 @@ internal static class NativeDesktop
         SetWindowLongPtr(hwnd, GwlStyle, new IntPtr(unchecked((long)style)));
 
         var ex = unchecked((uint)GetWindowLongPtr(hwnd, GwlExStyle).ToInt64());
+        // Keep the wallpaper itself unfocusable so desktop icons stay
+        // clickable. Tray menus must NOT use this HWND as owner — see TrayHost.
         ex = (ex | WsExNoActivate | WsExToolWindow) & ~WsExAppWindow;
         SetWindowLongPtr(hwnd, GwlExStyle, new IntPtr(unchecked((long)ex)));
     }

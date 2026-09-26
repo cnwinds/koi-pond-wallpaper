@@ -385,6 +385,67 @@
     syncHud();
   });
 
+  function preview(opts) {
+    opts = opts || {};
+    config.assign(
+      {
+        time: Object.prototype.hasOwnProperty.call(opts, "time") ? opts.time : config.state.time,
+        sky: Object.prototype.hasOwnProperty.call(opts, "sky") ? opts.sky : config.state.sky,
+        hour: Object.prototype.hasOwnProperty.call(opts, "hour") ? opts.hour : config.state.hour,
+        ui: opts.ui != null ? opts.ui : config.state.ui,
+      },
+      "ui"
+    );
+  }
+
+  function openSettings() {
+    config.assign({ ui: true }, "ui");
+    togglePanel(true);
+  }
+
+  function applyHostCommand(msg) {
+    if (typeof msg === "string") {
+      try {
+        msg = JSON.parse(msg);
+      } catch (err) {
+        return "bad";
+      }
+    }
+    if (!msg || typeof msg !== "object") return "bad";
+    const action = msg.action || msg.cmd;
+    if (action === "feed") {
+      const x = msg.x != null ? msg.x : cssW * 0.5;
+      const y = msg.y != null ? msg.y : cssH * 0.42;
+      world.feed(x, y, water);
+      return "ok";
+    }
+    if (action === "openSettings" || action === "settings") {
+      openSettings();
+      return "ok";
+    }
+    if (action === "preview") {
+      preview(msg);
+      if (msg.openSettings) openSettings();
+      return "ok";
+    }
+    return "unknown";
+  }
+
+  function bindHostBridge() {
+    const webview = global.chrome && global.chrome.webview;
+    if (webview && typeof webview.addEventListener === "function") {
+      webview.addEventListener("message", function (ev) {
+        applyHostCommand(ev.data);
+      });
+    }
+    global.addEventListener("message", function (ev) {
+      if (!ev || ev.source !== global) return;
+      const data = ev.data;
+      if (!data || data.source !== "koi-pond-host") return;
+      applyHostCommand(data);
+    });
+  }
+
   global.KoiPond = {
     config: config,
     water: water,
@@ -393,24 +454,16 @@
     feed: function (x, y) {
       world.feed(x, y, water);
     },
-    preview: function (opts) {
-      opts = opts || {};
-      config.assign(
-        {
-          time: Object.prototype.hasOwnProperty.call(opts, "time") ? opts.time : config.state.time,
-          sky: Object.prototype.hasOwnProperty.call(opts, "sky") ? opts.sky : config.state.sky,
-          hour: Object.prototype.hasOwnProperty.call(opts, "hour") ? opts.hour : config.state.hour,
-          ui: opts.ui != null ? opts.ui : config.state.ui,
-        },
-        "ui"
-      );
-    },
+    preview: preview,
+    openSettings: openSettings,
+    applyHostCommand: applyHostCommand,
   };
 
   resize();
   applyWorldSettings();
   syncHud();
   bindHud();
+  bindHostBridge();
   showHint();
   if (document.getElementById("pond") && water.compositesLife && water.compositesLife()) {
     document.getElementById("pond").classList.add("is-composite");

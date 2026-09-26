@@ -770,10 +770,12 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssW, cssH);
       if (drops.length) {
+        ctx.lineCap = "butt";
+        ctx.lineJoin = "bevel";
+        ctx.lineWidth = 0.65;
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
           if (d.z < 0.08 || d.z > 0.9) continue;
-          const alt = clamp(d.z, 0, 1);
           const wave = Math.sin(d.phase || 0);
           const fade = wave > 0 ? wave * wave : 0;
           if (fade < 0.45) continue;
@@ -784,22 +786,19 @@
           const dy = head.y - tail.y;
           const len = Math.hypot(dx, dy) || 1;
           if (len < 16) continue;
-          const nx = -dy / len;
-          const ny = dx / len;
-          /* Hairline, slightly wider aloft, tip width 0 so it cannot read as a dot. */
-          const tailW = 0.4 * (0.55 + 0.45 * alt);
-          const g = ctx.createLinearGradient(tail.x, tail.y, head.x, head.y);
-          g.addColorStop(0, "rgba(198, 208, 214, 0.85)");
-          g.addColorStop(0.5, "rgba(198, 208, 214, 0.22)");
-          g.addColorStop(1, "rgba(198, 208, 214, 0)");
-          ctx.fillStyle = g;
-          ctx.globalAlpha = Math.min(0.2, d.a * fade * 0.26);
+          /* Stop short of the water end so the tip cannot rasterize as a dot. */
+          const x1 = tail.x + dx * 0.78;
+          const y1 = tail.y + dy * 0.78;
+          const g = ctx.createLinearGradient(tail.x, tail.y, x1, y1);
+          g.addColorStop(0, "rgba(186, 196, 202, 0.7)");
+          g.addColorStop(0.62, "rgba(186, 196, 202, 0.14)");
+          g.addColorStop(1, "rgba(186, 196, 202, 0)");
+          ctx.strokeStyle = g;
+          ctx.globalAlpha = Math.min(0.16, d.a * fade * 0.2);
           ctx.beginPath();
-          ctx.moveTo(tail.x + nx * tailW, tail.y + ny * tailW);
-          ctx.lineTo(head.x, head.y);
-          ctx.lineTo(tail.x - nx * tailW, tail.y - ny * tailW);
-          ctx.closePath();
-          ctx.fill();
+          ctx.moveTo(tail.x, tail.y);
+          ctx.lineTo(x1, y1);
+          ctx.stroke();
         }
         ctx.globalAlpha = 1;
       }

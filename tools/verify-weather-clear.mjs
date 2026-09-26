@@ -24,6 +24,7 @@ function arg(name, fallback) {
 const outDir = path.resolve(arg("--out", "/tmp/weather-clear-out"));
 const port = parseInt(arg("--port", "8768"), 10);
 const skipBrowser = args.includes("--no-browser");
+const only = arg("--only", "");
 
 function read(rel) {
   return fs.readFileSync(path.join(root, rel), "utf8");
@@ -321,7 +322,9 @@ async function runBrowser() {
     { from: "cloudy", label: "cloudy" },
     { from: "fog", label: "fog" },
     { from: "rain", label: "rain" },
-  ];
+  ].filter(function (step) {
+    return !only || step.label === only;
+  });
   const report = [];
 
   for (const step of paths) {

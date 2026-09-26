@@ -692,9 +692,11 @@
 
     function tick(dt, target, quality, water, calm) {
       const look = stepBlend(target, dt, calm);
-      const want = calm ? 0 : Math.round((quality.rainStreaks || 0) * (look.rain || 0));
+      const rainAmt = look.rain || 0;
+      const want = calm || rainAmt < 0.05 ? 0 : Math.round((quality.rainStreaks || 0) * rainAmt);
       while (drops.length < want) drops.push(spawnDrop(true, look));
       while (drops.length > want) drops.pop();
+      if (want === 0) hits.length = 0;
       for (let i = 0; i < drops.length; i++) {
         const d = drops[i];
         d.z -= d.vz * dt * (0.55 + 0.45 * Math.max(d.z, 0));
@@ -754,8 +756,7 @@
       /* Rain hits only. Night/dusk/haze live in the water shader so a
          stale full-screen 2D surface cannot mosaic the pond as weather
          intensity drops toward clear. */
-      const raining = drops.length > 0 || (look && look.rain > 0.04);
-      if (!raining) {
+      if (!drops.length) {
         hits.length = 0;
         releaseOverlay();
         return;

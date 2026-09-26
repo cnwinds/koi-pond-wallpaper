@@ -4,8 +4,10 @@
  * fetched at most every 20 minutes, cached, and never blocks the pond.
  * Displayed light/weather eases toward the target so previews and live
  * updates fade (rain starts/stops, day↔night) instead of snapping.
- * Rain uses an oblique 3D projection: drops travel along a slanted
- * fall toward a water-plane hit, then splash. Not screen-Y streaks.
+ * Rain uses an oblique 3D projection: z=1 is altitude (near camera,
+ * higher on screen), z=0 is the water hit. Drops fall downward onto
+ * the pond (never rise). Streaks taper 上大下小. This canvas is rain
+ * only; night/dusk/haze/fog grade in the water shader.
  */
 (function (global) {
   const SHANGHAI = { lat: 31.2304, lon: 121.4737, tz: "Asia/Shanghai", name: "上海" };
@@ -634,6 +636,10 @@
       cssH = h;
       dpr = pixelRatio;
       if (!canvas) return;
+      if (!drops.length && !hits.length) {
+        releaseOverlay();
+        return;
+      }
       const pw = Math.max(1, Math.round(w * pixelRatio));
       const ph = Math.max(1, Math.round(h * pixelRatio));
       if (force && canvas.width === pw && canvas.height === ph) {
@@ -646,8 +652,10 @@
     function stormSlant(look) {
       const wind = look && look.wind ? look.wind : { x: -4, y: 3.2 };
       return {
-        x: 0.17 + clamp(wind.x / 48, -0.1, 0.1),
-        y: 0.24 + clamp(wind.y / 48, -0.1, 0.1),
+        x: 0.09 + clamp(wind.x / 56, -0.07, 0.07),
+        /* Always fall down the screen toward the hit. Positive y here is
+           how far above the splash the drop starts (project subtracts z). */
+        y: 0.14 + clamp(Math.abs(wind.y) / 70, 0, 0.05),
       };
     }
 
@@ -657,11 +665,11 @@
         tx: Math.random() * cssW,
         ty: Math.random() * cssH,
         z: fromSky ? 1 : Math.random(),
-        vz: 0.88 + Math.random() * 0.42,
+        vz: 1.05 + Math.random() * 0.38,
         size: 0.68 + Math.random() * 0.74,
         slantX: slant.x * (0.82 + Math.random() * 0.36),
         slantY: slant.y * (0.82 + Math.random() * 0.36),
-        a: 0.42 + Math.random() * 0.34,
+        a: 0.3 + Math.random() * 0.22,
       };
     }
 
@@ -670,26 +678,29 @@
       d.tx = Math.random() * cssW;
       d.ty = Math.random() * cssH;
       d.z = 0.82 + Math.random() * 0.18;
-      d.vz = 0.88 + Math.random() * 0.42;
+      d.vz = 1.05 + Math.random() * 0.38;
       d.size = 0.68 + Math.random() * 0.74;
       d.slantX = slant.x * (0.82 + Math.random() * 0.36);
       d.slantY = slant.y * (0.82 + Math.random() * 0.36);
-      d.a = 0.42 + Math.random() * 0.34;
+      d.a = 0.3 + Math.random() * 0.22;
     }
 
     function projectDrop(d, z) {
       if (z == null) z = d.z;
+      /* High z sits above/aside the hit; falling reduces z so y increases. */
       return {
-        x: d.tx + z * d.slantX * cssW,
-        y: d.ty + z * d.slantY * cssH,
+        x: d.tx - z * d.slantX * cssW,
+        y: d.ty - z * d.slantY * cssH,
       };
     }
 
     function tick(dt, target, quality, water, calm) {
       const look = stepBlend(target, dt, calm);
-      const want = calm ? 0 : Math.round((quality.rainStreaks || 0) * (look.rain || 0));
+      const rainAmt = look.rain || 0;
+      const want = calm || rainAmt < 0.05 ? 0 : Math.round((quality.rainStreaks || 0) * rainAmt);
       while (drops.length < want) drops.push(spawnDrop(true, look));
       while (drops.length > want) drops.pop();
+      if (want === 0) hits.length = 0;
       for (let i = 0; i < drops.length; i++) {
         const d = drops[i];
         d.z -= d.vz * dt * (0.55 + 0.45 * Math.max(d.z, 0));
@@ -697,8 +708,8 @@
           hits.push({ x: d.tx, y: d.ty, age: 0, size: d.size });
           if (hits.length > 36) hits.shift();
           if (!calm && water) {
-            const mag = 0.04 + d.size * 0.088;
-            const rad = 2400 - (d.size - 0.68) * 1600;
+            const mag = 0.06 + d.size * 0.11;
+            const rad = 1900 - (d.size - 0.68) * 1200;
             water.impulse(d.tx / cssW, d.ty / cssH, mag, rad);
           }
           recycleDrop(d, look);
@@ -706,82 +717,82 @@
       }
       for (let i = hits.length - 1; i >= 0; i--) {
         hits[i].age += dt;
-        if (hits[i].age > 0.22) hits.splice(i, 1);
+        if (hits[i].age > 0.28) hits.splice(i, 1);
       }
       dripT = 0;
       return look;
     }
 
+    function snap() {
+      const look = sample();
+      blend = captureBlend(look);
+      return paintLook(look, blend);
+    }
+
+    function overlayBusy() {
+      return drops.length + hits.length;
+    }
+
+    function releaseOverlay() {
+      if (!canvas) return;
+      canvas.width = 1;
+      canvas.height = 1;
+      canvas.classList.add("is-idle");
+      canvas.style.visibility = "hidden";
+      if (ctx) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, 1, 1);
+      }
+    }
+
+    function ensureOverlaySize() {
+      if (!canvas) return;
+      const pw = Math.max(1, Math.round(cssW * dpr));
+      const ph = Math.max(1, Math.round(cssH * dpr));
+      if (canvas.width !== pw) canvas.width = pw;
+      if (canvas.height !== ph) canvas.height = ph;
+      canvas.classList.remove("is-idle");
+      canvas.style.visibility = "visible";
+    }
+
     function render(look) {
       if (!ctx) return;
+      /* Rain hits only. Night/dusk/haze live in the water shader so a
+         stale full-screen 2D surface cannot mosaic the pond as weather
+         intensity drops toward clear. */
+      if (!drops.length) {
+        hits.length = 0;
+        releaseOverlay();
+        return;
+      }
+      ensureOverlaySize();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssW, cssH);
-
-      const night = 1 - look.dayness;
-      if (night > 0.02) {
-        ctx.fillStyle = "rgba(2, 8, 22, " + (night * 0.3).toFixed(3) + ")";
-        ctx.fillRect(0, 0, cssW, cssH);
-        const vg = ctx.createRadialGradient(
-          cssW * 0.5,
-          cssH * 0.42,
-          Math.min(cssW, cssH) * 0.18,
-          cssW * 0.5,
-          cssH * 0.5,
-          Math.max(cssW, cssH) * 0.78
-        );
-        vg.addColorStop(0, "rgba(0,0,0,0)");
-        vg.addColorStop(1, "rgba(0, 2, 12, " + (night * 0.28).toFixed(3) + ")");
-        ctx.fillStyle = vg;
-        ctx.fillRect(0, 0, cssW, cssH);
-        if (night > 0.45) {
-          const mx = cssW * 0.78;
-          const my = cssH * 0.14;
-          const mg = ctx.createRadialGradient(mx, my, 0, mx, my, 70);
-          mg.addColorStop(0, "rgba(230, 236, 248, " + (0.42 * night).toFixed(3) + ")");
-          mg.addColorStop(0.28, "rgba(180, 200, 230, " + (0.14 * night).toFixed(3) + ")");
-          mg.addColorStop(1, "rgba(0,0,0,0)");
-          ctx.fillStyle = mg;
-          ctx.fillRect(mx - 80, my - 80, 160, 160);
-        }
-      }
-      if (look.dayness > 0.12 && look.dayness < 0.55) {
-        const dusk = Math.exp(-Math.pow((look.dayness - 0.3) / 0.16, 2));
-        ctx.fillStyle = "rgba(255, 132, 64, " + (dusk * 0.14).toFixed(3) + ")";
-        ctx.fillRect(0, 0, cssW, cssH);
-      }
-      if (look.haze > 0.02) {
-        const g = ctx.createRadialGradient(
-          cssW * 0.5,
-          cssH * 0.42,
-          Math.min(cssW, cssH) * 0.08,
-          cssW * 0.5,
-          cssH * 0.5,
-          Math.max(cssW, cssH) * 0.74
-        );
-        const fogA = 0.28 + (look.fog || 0) * 0.3;
-        g.addColorStop(0, "rgba(176, 192, 190, " + (look.haze * 0.16).toFixed(3) + ")");
-        g.addColorStop(1, "rgba(158, 174, 178, " + (look.haze * fogA).toFixed(3) + ")");
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, cssW, cssH);
-      }
       if (drops.length) {
-        ctx.lineCap = "round";
-        ctx.strokeStyle = "rgba(226, 236, 240, 0.92)";
-        ctx.fillStyle = "rgba(232, 240, 244, 1)";
+        ctx.fillStyle = "rgba(226, 234, 238, 1)";
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
-          const near = clamp(1 - d.z, 0, 1);
-          const ease = near * near * (3 - 2 * near);
+          if (d.z < 0.06 || d.z > 0.92) continue;
+          /* Sparse airborne hints — most of the look is the splash/ripple. */
+          if ((i + ((d.tx + d.ty) | 0)) % 3 === 0) continue;
+          const alt = clamp(d.z, 0, 1);
+          const foreshort = 0.28 + 0.72 * alt;
           const head = projectDrop(d, d.z);
-          const tail = projectDrop(d, Math.min(1, d.z + 0.11 * d.size));
-          ctx.globalAlpha = d.a * (0.38 + 0.62 * ease);
-          ctx.lineWidth = (1.05 + 1.15 * d.size) * (0.7 + 0.5 * ease);
+          const tail = projectDrop(d, Math.min(1, d.z + 0.1 * d.size));
+          const dx = head.x - tail.x;
+          const dy = head.y - tail.y;
+          const len = Math.hypot(dx, dy) || 1;
+          const nx = -dy / len;
+          const ny = dx / len;
+          const tailW = (0.85 + 0.55 * d.size) * foreshort;
+          const headW = (0.14 + 0.16 * d.size) * (0.35 + 0.55 * alt);
+          ctx.globalAlpha = d.a * (0.18 + 0.36 * alt);
           ctx.beginPath();
-          ctx.moveTo(tail.x, tail.y);
-          ctx.lineTo(head.x, head.y);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.arc(head.x, head.y, (0.85 + 1.35 * d.size) * (0.5 + 0.75 * ease), 0, Math.PI * 2);
+          ctx.moveTo(tail.x + nx * tailW, tail.y + ny * tailW);
+          ctx.lineTo(head.x + nx * headW, head.y + ny * headW);
+          ctx.lineTo(head.x - nx * headW, head.y - ny * headW);
+          ctx.lineTo(tail.x - nx * tailW, tail.y - ny * tailW);
+          ctx.closePath();
           ctx.fill();
         }
         ctx.globalAlpha = 1;
@@ -789,11 +800,12 @@
       if (hits.length) {
         for (let i = 0; i < hits.length; i++) {
           const hit = hits[i];
-          const t = clamp(hit.age / 0.2, 0, 1);
-          ctx.globalAlpha = 0.5 * (1 - t);
-          ctx.fillStyle = "rgba(230, 238, 242, 1)";
+          const t = clamp(hit.age / 0.28, 0, 1);
+          const sz = hit.size || 1;
+          ctx.globalAlpha = 0.42 * (1 - t);
+          ctx.fillStyle = "rgba(232, 240, 244, 1)";
           ctx.beginPath();
-          ctx.arc(hit.x, hit.y, 2.1 + (hit.size || 1) * 1.4, 0, Math.PI * 2);
+          ctx.arc(hit.x, hit.y, 1.4 + sz * 1.1 * (1 - t * 0.35), 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.globalAlpha = 1;
@@ -812,6 +824,14 @@
       resize,
       tick,
       render,
+      snap,
+      overlayBusy,
+      debugDrops: function () {
+        return drops.map(function (d) {
+          const p = projectDrop(d, d.z);
+          return { x: p.x, y: p.y, z: d.z, tx: d.tx, ty: d.ty, size: d.size };
+        });
+      },
       display: function () {
         return blend ? paintLook(sample(), blend) : sample();
       },

@@ -74,7 +74,9 @@ function staticChecks() {
   assert(climate.includes("Drop size is ripple-only"), "streaks still scale with drop size", failures);
   assert(water.includes("uniform float uRain"), "WATER_FS missing uRain", failures);
   assert(water.includes("fade that glint"), "rain crests can still shade as white discs", failures);
-  assert(csproj.includes("<Version>0.3.10</Version>"), "csproj not bumped to 0.3.10", failures);
+  assert(climate.includes("lineWidth = 1.25"), "rain streaks are not a visible hairline", failures);
+  assert(!climate.includes("globalAlpha = Math.min(0.16"), "rain streaks are still nearly invisible", failures);
+  assert(csproj.includes("<Version>0.3.11</Version>"), "csproj not bumped to 0.3.11", failures);
   return failures;
 }
 
@@ -504,14 +506,20 @@ async function runBrowser() {
         ctx.drawImage(wx, 0, 0);
         const data = ctx.getImageData(0, 0, tmp.width, tmp.height).data;
         let bright = 0;
+        let ink = 0;
         for (let i = 0; i < data.length; i += 4) {
-          if (data[i] > 210 && data[i + 1] > 210 && data[i + 2] > 210 && data[i + 3] > 90) bright++;
+          const a = data[i + 3];
+          if (a > 48) ink++;
+          if (data[i] > 220 && data[i + 1] > 220 && data[i + 2] > 220 && a > 200) bright++;
         }
-        return { bright: bright, w: tmp.width, h: tmp.height };
+        return { bright: bright, ink: ink, w: tmp.width, h: tmp.height };
       });
       console.log("  wx specks", specks);
-      if (specks.bright > 40) {
+      if (specks.bright > 20) {
         failures.push("rain: opaque white specks (" + specks.bright + ")");
+      }
+      if (!specks.ink || specks.ink < 350) {
+        failures.push("rain: streaks not visible (ink px " + (specks.ink || 0) + ")");
       }
       const blobs = await page.evaluate(() => {
         const water = document.getElementById("water");

@@ -180,6 +180,11 @@ void main() {
   water += mix(vec3(0.45, 0.62, 1.0), vec3(0.72, 0.86, 0.8), uDayness) * spec * 0.52 * (0.18 + 0.82 * max(uCausticGain, 1.0 - uDayness));
   float crestLift = mix(0.2, 0.012, rainW);
   water += vec3(0.55, 0.7, 0.8) * smoothstep(0.05, 0.24, abs(h)) * crestLift;
+  /* Whole-pond lift so rain is not a black sheet. Slope light catches the
+     ring, and (1-crest) keeps the flat landing from turning into a white disc. */
+  water += vec3(0.028, 0.04, 0.04) * rainW;
+  float slope = smoothstep(0.1, 0.62, length(n.xy));
+  water += vec3(0.045, 0.07, 0.062) * slope * rainW * (1.0 - crest);
 
   float edge = smoothstep(0.46, 0.72, max(abs(uv.x - 0.5), abs(uv.y - 0.5)));
   water = mix(water, mix(vec3(0.01, 0.02, 0.05), vec3(0.045, 0.07, 0.05), uDayness), edge * 0.42);

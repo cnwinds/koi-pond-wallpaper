@@ -53,6 +53,7 @@ function staticChecks() {
   assert(climate.includes("Rain hits only"), "climate.render is not documented as rain-only", failures);
   assert(climate.includes("releaseOverlay"), "wx idle release missing", failures);
   assert(climate.includes("d.tx - z * d.slantX"), "rain projectDrop must subtract slant (fall onto water, not rise)", failures);
+  assert(climate.includes("d.phase"), "rain streaks missing opacity pulse", failures);
   assert(!climate.includes("d.tx + z * d.slantX"), "rain projectDrop still adds z*slant (rising motion)", failures);
   assert(!climate.includes("rgba(255, 132, 64"), "climate.render still paints dusk fill", failures);
   assert(!climate.includes("rgba(176, 192, 190"), "climate.render still paints haze gradient", failures);
@@ -431,11 +432,43 @@ async function runBrowser() {
         const aboveHit = a.filter(function (d) {
           return d.z > 0.55 && d.y < d.ty - 2;
         }).length;
+        let slopeN = 0;
+        let slopeSum = 0;
+        let fadeLo = 0;
+        let fadeHi = 0;
+        let dzSum = 0;
+        let dzN = 0;
+        for (let i = 0; i < a.length; i++) {
+          const da = a[i];
+          if (da.fade < 0.12) fadeLo++;
+          if (da.fade > 0.55) fadeHi++;
+          if (da.z > 0.35) {
+            const vx = Math.abs(da.tx - da.x);
+            const vy = Math.abs(da.ty - da.y);
+            if (vy > 8) {
+              slopeSum += vx / vy;
+              slopeN++;
+            }
+          }
+          for (let j = 0; j < b.length; j++) {
+            const db = b[j];
+            if (Math.abs(db.tx - da.tx) > 0.2 || Math.abs(db.ty - da.ty) > 0.2) continue;
+            if (db.z < da.z - 1e-4) {
+              dzSum += da.z - db.z;
+              dzN++;
+            }
+            break;
+          }
+        }
         return {
           n: dys.length,
           meanDy: dys.length ? sum / dys.length : 0,
           aboveHit: aboveHit,
           count: a.length,
+          slope: slopeN ? slopeSum / slopeN : 0,
+          meanDz: dzN ? dzSum / dzN : 0,
+          fadeLo: fadeLo,
+          fadeHi: fadeHi,
         };
       });
       console.log("  rain motion", motion);
@@ -443,6 +476,13 @@ async function runBrowser() {
       if (motion.n < 5) failures.push("rain: could not track falling drops");
       if (motion.meanDy <= 0.15) failures.push("rain: mean dy " + motion.meanDy + " — not falling down");
       if (motion.aboveHit < 2) failures.push("rain: high-z drops are not above their hit points");
+      if (!(motion.slope > 0.12 && motion.slope < 0.62)) {
+        failures.push("rain: slant not steep (lateral/vertical " + motion.slope + ")");
+      }
+      if (motion.meanDz < 0.28) failures.push("rain: fall too slow (Δz " + motion.meanDz + " / 0.25s)");
+      if (motion.fadeLo < 4 || motion.fadeHi < 4) {
+        failures.push("rain: opacity not pulsing (low " + motion.fadeLo + ", high " + motion.fadeHi + ")");
+      }
       const rainFile = path.join(outDir, "rain-settled.png");
       await captureFrame(page, rainFile);
     }

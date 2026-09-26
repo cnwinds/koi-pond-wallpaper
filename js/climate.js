@@ -652,37 +652,44 @@
     function stormSlant(look) {
       const wind = look && look.wind ? look.wind : { x: -4, y: 3.2 };
       return {
-        x: 0.09 + clamp(wind.x / 56, -0.07, 0.07),
+        /* Lateral drift stays small so the fall reads steep, not a shallow streak. */
+        x: 0.026 + clamp(wind.x / 110, -0.01, 0.01),
         /* Always fall down the screen toward the hit. Positive y here is
            how far above the splash the drop starts (project subtracts z). */
-        y: 0.14 + clamp(Math.abs(wind.y) / 70, 0, 0.05),
+        y: 0.1 + clamp(Math.abs(wind.y) / 140, 0, 0.015),
       };
     }
 
     function spawnDrop(fromSky, look) {
       const slant = stormSlant(look);
+      const spread = 0.92 + Math.random() * 0.16;
       return {
         tx: Math.random() * cssW,
         ty: Math.random() * cssH,
         z: fromSky ? 1 : Math.random(),
-        vz: 1.05 + Math.random() * 0.38,
+        vz: 1.75 + Math.random() * 0.5,
         size: 0.68 + Math.random() * 0.74,
-        slantX: slant.x * (0.82 + Math.random() * 0.36),
-        slantY: slant.y * (0.82 + Math.random() * 0.36),
-        a: 0.3 + Math.random() * 0.22,
+        slantX: slant.x * spread,
+        slantY: slant.y * spread,
+        a: 0.28 + Math.random() * 0.18,
+        phase: Math.random() * Math.PI * 2,
+        flickerHz: 0.85 + Math.random() * 1.35,
       };
     }
 
     function recycleDrop(d, look) {
       const slant = stormSlant(look);
+      const spread = 0.92 + Math.random() * 0.16;
       d.tx = Math.random() * cssW;
       d.ty = Math.random() * cssH;
       d.z = 0.82 + Math.random() * 0.18;
-      d.vz = 1.05 + Math.random() * 0.38;
+      d.vz = 1.75 + Math.random() * 0.5;
       d.size = 0.68 + Math.random() * 0.74;
-      d.slantX = slant.x * (0.82 + Math.random() * 0.36);
-      d.slantY = slant.y * (0.82 + Math.random() * 0.36);
-      d.a = 0.3 + Math.random() * 0.22;
+      d.slantX = slant.x * spread;
+      d.slantY = slant.y * spread;
+      d.a = 0.28 + Math.random() * 0.18;
+      d.phase = Math.random() * Math.PI * 2;
+      d.flickerHz = 0.85 + Math.random() * 1.35;
     }
 
     function projectDrop(d, z) {
@@ -703,7 +710,8 @@
       if (want === 0) hits.length = 0;
       for (let i = 0; i < drops.length; i++) {
         const d = drops[i];
-        d.z -= d.vz * dt * (0.55 + 0.45 * Math.max(d.z, 0));
+        d.phase += dt * (d.flickerHz || 1.2);
+        d.z -= d.vz * dt * (0.78 + 0.22 * Math.max(d.z, 0));
         if (d.z <= 0) {
           hits.push({ x: d.tx, y: d.ty, age: 0, size: d.size });
           if (hits.length > 36) hits.shift();
@@ -773,20 +781,21 @@
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
           if (d.z < 0.06 || d.z > 0.92) continue;
-          /* Sparse airborne hints — most of the look is the splash/ripple. */
-          if ((i + ((d.tx + d.ty) | 0)) % 3 === 0) continue;
           const alt = clamp(d.z, 0, 1);
+          const wave = Math.sin(d.phase || 0);
+          const fade = wave > 0 ? wave * wave : 0;
+          if (fade < 0.04) continue;
           const foreshort = 0.28 + 0.72 * alt;
           const head = projectDrop(d, d.z);
-          const tail = projectDrop(d, Math.min(1, d.z + 0.1 * d.size));
+          const tail = projectDrop(d, Math.min(1, d.z + 0.08 * d.size));
           const dx = head.x - tail.x;
           const dy = head.y - tail.y;
           const len = Math.hypot(dx, dy) || 1;
           const nx = -dy / len;
           const ny = dx / len;
-          const tailW = (0.85 + 0.55 * d.size) * foreshort;
-          const headW = (0.14 + 0.16 * d.size) * (0.35 + 0.55 * alt);
-          ctx.globalAlpha = d.a * (0.18 + 0.36 * alt);
+          const tailW = (0.7 + 0.45 * d.size) * foreshort;
+          const headW = (0.12 + 0.14 * d.size) * (0.35 + 0.55 * alt);
+          ctx.globalAlpha = d.a * fade * (0.16 + 0.34 * alt);
           ctx.beginPath();
           ctx.moveTo(tail.x + nx * tailW, tail.y + ny * tailW);
           ctx.lineTo(head.x + nx * headW, head.y + ny * headW);
@@ -829,7 +838,16 @@
       debugDrops: function () {
         return drops.map(function (d) {
           const p = projectDrop(d, d.z);
-          return { x: p.x, y: p.y, z: d.z, tx: d.tx, ty: d.ty, size: d.size };
+          const wave = Math.sin(d.phase || 0);
+          return {
+            x: p.x,
+            y: p.y,
+            z: d.z,
+            tx: d.tx,
+            ty: d.ty,
+            size: d.size,
+            fade: wave > 0 ? wave * wave : 0,
+          };
         });
       },
       display: function () {

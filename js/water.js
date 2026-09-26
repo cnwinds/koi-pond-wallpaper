@@ -447,7 +447,7 @@ void main() {
       kind: "canvas2d",
       compositesLife: true,
       impulse: function (nx, ny, strength) {
-        rings.push({ x: nx, y: ny, r: 4, a: 0.28 * strength, s: strength });
+        rings.push({ x: nx, y: ny, r: 3 + strength * 28, a: 0.3 * strength, s: strength });
       },
       step: function () {},
       rebuild: function () {},

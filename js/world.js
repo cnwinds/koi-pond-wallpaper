@@ -663,6 +663,20 @@
       ctx.stroke();
       ctx.restore();
 
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = "rgba(255,255,255,0.16)";
+      ctx.lineWidth = 2.4 * f.size;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      for (let i = 0; i < spine.length - 2; i++) {
+        const p = spine[i];
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+
       drawEyes(f, pal);
     }
 

@@ -56,7 +56,7 @@
   function splat(ctx, x, y, rx, ry, color, rng, rot) {
     const g = ctx.createRadialGradient(x, y, 0, x, y, Math.max(rx, ry));
     g.addColorStop(0, color);
-    g.addColorStop(0.55, color);
+    g.addColorStop(0.72, color);
     g.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = g;
     ctx.beginPath();
@@ -129,15 +129,18 @@
     ctx.fillStyle = ridge;
     ctx.fillRect(0, height * 0.32, width, height * 0.36);
 
-    const blobs = 4 + ((rng() * 4) | 0);
+    if (type === "kohaku" || type === "sanke" || type === "showa") {
+      blotch(ctx, width * 0.7, height * 0.48, width * 0.18, height * 0.24, pal.pattern[0], rng);
+    }
+    const blobs = 5 + ((rng() * 4) | 0);
     for (let i = 0; i < blobs; i++) {
       const color = pick(rng, pal.pattern);
       blotch(
         ctx,
-        lerp(width * 0.22, width * 0.8, rng()),
-        lerp(height * 0.3, height * 0.7, rng()),
-        width * (0.08 + rng() * 0.16),
-        height * (0.12 + rng() * 0.2),
+        lerp(width * 0.2, width * 0.82, rng()),
+        lerp(height * 0.28, height * 0.72, rng()),
+        width * (0.1 + rng() * 0.2),
+        height * (0.16 + rng() * 0.24),
         color,
         rng
       );
@@ -207,9 +210,9 @@
     ctx.closePath();
 
     const green = ctx.createRadialGradient(-r * 0.2, -r * 0.15, r * 0.1, 0, 0, r);
-    green.addColorStop(0, "rgba(102, 136, 72, 0.94)");
-    green.addColorStop(0.55, "rgba(58, 88, 48, 0.9)");
-    green.addColorStop(1, "rgba(32, 52, 30, 0.8)");
+    green.addColorStop(0, "rgba(118, 158, 78, 0.95)");
+    green.addColorStop(0.55, "rgba(72, 108, 56, 0.92)");
+    green.addColorStop(1, "rgba(42, 68, 38, 0.84)");
     ctx.fillStyle = green;
     ctx.fill();
 

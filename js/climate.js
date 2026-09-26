@@ -238,8 +238,8 @@
     let elev = sunElevation(lat, lon, when);
     const named = parseTimeName(overrideTime);
     if (named === "day") elev = 48;
-    else if (named === "night") elev = -22;
-    else if (named === "dusk") elev = 0.4;
+    else if (named === "night") elev = -16;
+    else if (named === "dusk") elev = -1.2;
     else if (overrideHour != null && !Number.isNaN(+overrideHour)) {
       elev = elevFromHour(clamp(+overrideHour, 0, 24));
     }
@@ -257,27 +257,27 @@
 
     const dayTint =
       sky === "clear"
-        ? [1.2, 1.08, 0.84]
+        ? [1.04, 1.06, 0.96]
         : sky === "cloudy"
-          ? [0.74, 0.82, 0.9]
+          ? [0.72, 0.8, 0.88]
           : sky === "rain"
-            ? [0.52, 0.64, 0.68]
-            : [0.82, 0.88, 0.86];
-    const nightTint = [0.28, 0.46, 0.95];
+            ? [0.5, 0.62, 0.66]
+            : [0.8, 0.86, 0.84];
+    const nightTint = [0.3, 0.48, 0.98];
     const tint = [
       lerp(nightTint[0], dayTint[0], dayness),
       lerp(nightTint[1], dayTint[1], dayness),
       lerp(nightTint[2], dayTint[2], dayness),
     ];
     const twilight = Math.exp(-Math.pow((dayness - 0.3) / 0.16, 2));
-    tint[0] = lerp(tint[0], 1.38, twilight * 0.55);
-    tint[1] = lerp(tint[1], 0.58, twilight * 0.4);
-    tint[2] = lerp(tint[2], 0.34, twilight * 0.45);
+    tint[0] = lerp(tint[0], 1.22, twilight * 0.28);
+    tint[1] = lerp(tint[1], 0.78, twilight * 0.18);
+    tint[2] = lerp(tint[2], 0.62, twilight * 0.2);
 
-    let exposure = lerp(0.22, sky === "clear" ? 1.24 : sky === "cloudy" ? 0.78 : sky === "rain" ? 0.58 : 0.7, dayness);
+    let exposure = lerp(0.32, sky === "clear" ? 1.06 : sky === "cloudy" ? 0.74 : sky === "rain" ? 0.56 : 0.68, dayness);
     if (sky === "fog") exposure *= 0.82;
 
-    let causticGain = dayness * (sky === "clear" ? 1.35 : sky === "cloudy" ? 0.16 : 0.05);
+    let causticGain = dayness * (sky === "clear" ? 1.15 : sky === "cloudy" ? 0.16 : 0.05);
     const haze = clamp(fog * 0.72 + (1 - dayness) * 0.14 + (clouds / 100) * 0.12, 0, 0.88);
     const windAmp = clamp(windKmh / 28, 0, 1.35);
     const from = (windDir * Math.PI) / 180;
@@ -613,7 +613,7 @@
 
       const night = 1 - look.dayness;
       if (night > 0.02) {
-        ctx.fillStyle = "rgba(2, 8, 20, " + (night * 0.55).toFixed(3) + ")";
+        ctx.fillStyle = "rgba(2, 8, 22, " + (night * 0.3).toFixed(3) + ")";
         ctx.fillRect(0, 0, cssW, cssH);
         const vg = ctx.createRadialGradient(
           cssW * 0.5,
@@ -624,7 +624,7 @@
           Math.max(cssW, cssH) * 0.78
         );
         vg.addColorStop(0, "rgba(0,0,0,0)");
-        vg.addColorStop(1, "rgba(0, 2, 10, " + (night * 0.42).toFixed(3) + ")");
+        vg.addColorStop(1, "rgba(0, 2, 12, " + (night * 0.28).toFixed(3) + ")");
         ctx.fillStyle = vg;
         ctx.fillRect(0, 0, cssW, cssH);
         if (night > 0.45) {
@@ -640,7 +640,7 @@
       }
       if (look.dayness > 0.12 && look.dayness < 0.55) {
         const dusk = Math.exp(-Math.pow((look.dayness - 0.3) / 0.16, 2));
-        ctx.fillStyle = "rgba(255, 118, 52, " + (dusk * 0.2).toFixed(3) + ")";
+        ctx.fillStyle = "rgba(255, 132, 64, " + (dusk * 0.14).toFixed(3) + ")";
         ctx.fillRect(0, 0, cssW, cssH);
       }
       if (look.haze > 0.02) {

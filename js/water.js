@@ -118,9 +118,9 @@ void main() {
   vec3 deepN = vec3(0.015, 0.03, 0.07);
   vec3 midN = vec3(0.03, 0.055, 0.12);
   vec3 shallowN = vec3(0.05, 0.09, 0.16);
-  vec3 deepD = vec3(0.045, 0.15, 0.145);
-  vec3 midD = vec3(0.08, 0.28, 0.25);
-  vec3 shallowD = vec3(0.16, 0.42, 0.34);
+  vec3 deepD = vec3(0.04, 0.13, 0.14);
+  vec3 midD = vec3(0.07, 0.24, 0.24);
+  vec3 shallowD = vec3(0.12, 0.34, 0.32);
   vec3 deep = mix(deepN, deepD, uDayness);
   vec3 mid = mix(midN, midD, uDayness);
   vec3 shallow = mix(shallowN, shallowD, uDayness);
@@ -163,17 +163,13 @@ void main() {
     vec2 warp = n.xy * uDistort + vec2(h, -h) * uDistort * 0.55;
     vec2 lifeUv = uv + warp;
     vec4 lifeC = texture(uLife, lifeUv);
-    if (uDistort > 0.045) {
-      lifeC.r = texture(uLife, lifeUv + warp * 0.22).r;
-      lifeC.b = texture(uLife, lifeUv - warp * 0.18).b;
-    }
-    vec3 sunT = vec3(1.14, 1.04, 0.86);
-    vec3 moonT = vec3(0.5, 0.68, 1.18);
-    vec3 lightT = mix(moonT, sunT, uDayness) * uTint;
-    float lightE = mix(0.52, 1.08, uDayness) * uExposure;
+    vec3 sunT = vec3(1.03, 1.01, 0.97);
+    vec3 moonT = vec3(0.58, 0.72, 1.12);
+    vec3 lightT = mix(moonT, sunT, uDayness);
+    float lightE = mix(0.62, 1.0, uDayness);
     vec3 lit = lifeC.rgb * lightT * lightE;
-    lit += vec3(0.55, 0.74, 0.42) * (cau * 0.38 + cau2 * 0.2) * uCausticGain;
-    lit *= 1.0 + h * 0.45;
+    lit += vec3(0.42, 0.58, 0.36) * (cau * 0.28 + cau2 * 0.14) * uCausticGain;
+    lit *= 1.0 + h * 0.38;
     lit = mix(lit, vec3(0.7, 0.78, 0.8) * uExposure, clamp(uHaze * 0.45, 0.0, 0.4));
     water = mix(water, lit, clamp(lifeC.a, 0.0, 1.0));
   }
@@ -490,17 +486,17 @@ void main() {
         }
 
         ctx.save();
-        ctx.strokeStyle = "rgba(198, 222, 210, 0.22)";
+        ctx.strokeStyle = "rgba(210, 232, 220, 0.7)";
         for (let i = rings.length - 1; i >= 0; i--) {
           const ring = rings[i];
-          ring.r += 70 * 0.016 + ring.s * 0.4;
-          ring.a -= 0.0065;
+          ring.r += 80 * 0.016 + ring.s * 0.5;
+          ring.a -= 0.0055;
           if (ring.a <= 0) {
             rings.splice(i, 1);
             continue;
           }
-          ctx.globalAlpha = ring.a;
-          ctx.lineWidth = 1.6;
+          ctx.globalAlpha = Math.min(0.7, ring.a * 1.6);
+          ctx.lineWidth = 2.4;
           ctx.beginPath();
           ctx.ellipse(ring.x * cssW, ring.y * cssH, ring.r, ring.r * 0.86, 0, 0, Math.PI * 2);
           ctx.stroke();
@@ -516,12 +512,12 @@ void main() {
           for (let i = 0; i < bands; i++) {
             const y = i * bh;
             const ny = (i + 0.5) / bands;
-            let ox = Math.sin(ny * 16 + t * 1.5) * distort * 90;
+            let ox = Math.sin(ny * 16 + t * 1.5) * distort * 160;
             for (let r = 0; r < rings.length; r++) {
               const ring = rings[r];
               const dy = ny - ring.y;
-              const fall = Math.exp(-dy * dy * 40);
-              ox += Math.sin(ring.r * 0.05) * ring.a * 26 * fall;
+              const fall = Math.exp(-dy * dy * 28);
+              ox += Math.sin(ring.r * 0.07) * ring.a * 70 * fall;
             }
             ctx.drawImage(opts.life, 0, (y / cssH) * opts.life.height, opts.life.width, (bh / cssH) * opts.life.height + 1.5, ox, y, cssW, bh + 0.8);
           }

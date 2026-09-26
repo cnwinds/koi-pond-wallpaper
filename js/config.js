@@ -15,7 +15,7 @@
       spineSlices: 16,
       rainStreaks: 0,
       rainDrips: 0.35,
-      lifeDistort: 0.055,
+      lifeDistort: 0.05,
       power: "low-power",
     },
     mid: {
@@ -29,7 +29,7 @@
       spineSlices: 24,
       rainStreaks: 72,
       rainDrips: 1.6,
-      lifeDistort: 0.09,
+      lifeDistort: 0.08,
       power: "low-power",
     },
     high: {
@@ -43,7 +43,7 @@
       spineSlices: 32,
       rainStreaks: 130,
       rainDrips: 2.4,
-      lifeDistort: 0.12,
+      lifeDistort: 0.1,
       power: "default",
     },
   };

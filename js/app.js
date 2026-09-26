@@ -394,4 +394,9 @@
   }
   climate.start();
   start();
+  if (config.state.demo) {
+    setTimeout(function () {
+      world.feed(cssW * 0.48, cssH * 0.46, water);
+    }, 240);
+  }
 })(window);

@@ -2,12 +2,16 @@
  *
  * Lighting always follows the actual sun at the chosen lat/lon. Weather is
  * fetched at most every 20 minutes, cached, and never blocks the pond.
+ * Displayed light/weather eases toward the target so previews and live
+ * updates fade (rain starts/stops, day↔night) instead of snapping.
  */
 (function (global) {
   const SHANGHAI = { lat: 31.2304, lon: 121.4737, tz: "Asia/Shanghai", name: "上海" };
   const WEATHER_KEY = "koi-pond-weather-v1";
   const REFRESH_MS = 20 * 60 * 1000;
   const STALE_MS = 6 * 60 * 60 * 1000;
+  /* ~95% of a step lands in ~4.5s; reduced-motion uses a shorter tau. */
+  const RAMP_SEC = 4.5;
   const GEOJS_URL = "https://get.geojs.io/v1/ip/geo.json";
   const IPWHO_URL = "https://ipwho.is/";
 
@@ -17,6 +21,12 @@
 
   function lerp(a, b, t) {
     return a + (b - a) * t;
+  }
+
+  function approach(cur, tgt, dt, tau) {
+    if (cur == null || Math.abs(tgt - cur) < 1e-5) return tgt;
+    const k = 1 - Math.exp(-dt / Math.max(0.08, tau));
+    return cur + (tgt - cur) * k;
   }
 
   function smoothstep(e0, e1, x) {
@@ -375,6 +385,60 @@
     let dripT = 0;
     const drops = [];
     const listeners = [];
+    let blend = null;
+    let rampTau = options.rampSec != null ? clamp(+options.rampSec, 0.25, 20) / 2.8 : RAMP_SEC / 2.8;
+
+    function captureBlend(look) {
+      return {
+        dayness: look.dayness,
+        rain: look.rain,
+        fog: look.fog,
+        haze: look.haze,
+        exposure: look.exposure,
+        tint0: look.tint[0],
+        tint1: look.tint[1],
+        tint2: look.tint[2],
+        causticGain: look.causticGain,
+        ambientMul: look.ambientMul,
+        windX: look.wind.x,
+        windY: look.wind.y,
+      };
+    }
+
+    function paintLook(look, b) {
+      const out = Object.assign({}, look);
+      out.dayness = b.dayness;
+      out.rain = b.rain;
+      out.fog = b.fog;
+      out.haze = b.haze;
+      out.exposure = b.exposure;
+      out.tint = [b.tint0, b.tint1, b.tint2];
+      out.causticGain = b.causticGain;
+      out.ambientMul = b.ambientMul;
+      out.wind = { x: b.windX, y: b.windY };
+      return out;
+    }
+
+    function stepBlend(target, dt, calm) {
+      if (!blend) {
+        blend = captureBlend(target);
+        return paintLook(target, blend);
+      }
+      const tau = calm ? 0.22 : rampTau;
+      blend.dayness = approach(blend.dayness, target.dayness, dt, tau);
+      blend.rain = approach(blend.rain, target.rain, dt, tau);
+      blend.fog = approach(blend.fog, target.fog, dt, tau);
+      blend.haze = approach(blend.haze, target.haze, dt, tau);
+      blend.exposure = approach(blend.exposure, target.exposure, dt, tau);
+      blend.tint0 = approach(blend.tint0, target.tint[0], dt, tau);
+      blend.tint1 = approach(blend.tint1, target.tint[1], dt, tau);
+      blend.tint2 = approach(blend.tint2, target.tint[2], dt, tau);
+      blend.causticGain = approach(blend.causticGain, target.causticGain, dt, tau);
+      blend.ambientMul = approach(blend.ambientMul, target.ambientMul, dt, tau);
+      blend.windX = approach(blend.windX, target.wind.x, dt, tau);
+      blend.windY = approach(blend.windY, target.wind.y, dt, tau);
+      return paintLook(target, blend);
+    }
 
     function emit() {
       const look = sample();
@@ -582,7 +646,8 @@
       };
     }
 
-    function tick(dt, look, quality, water, calm) {
+    function tick(dt, target, quality, water, calm) {
+      const look = stepBlend(target, dt, calm);
       const want = calm ? 0 : Math.round((quality.rainStreaks || 0) * (look.rain || 0));
       while (drops.length < want) drops.push(spawnDrop());
       while (drops.length > want) drops.pop();
@@ -595,7 +660,7 @@
           d.y = -12;
         }
       }
-      if (!calm && look.rain > 0 && water && quality.rainDrips) {
+      if (!calm && look.rain > 0.03 && water && quality.rainDrips) {
         dripT += dt * look.rain * quality.rainDrips * 2.2;
         while (dripT >= 1) {
           dripT -= 1;
@@ -604,6 +669,7 @@
       } else {
         dripT = 0;
       }
+      return look;
     }
 
     function render(look) {
@@ -652,7 +718,7 @@
           cssH * 0.5,
           Math.max(cssW, cssH) * 0.74
         );
-        const fogA = look.sky === "fog" ? 0.55 : 0.28;
+        const fogA = 0.28 + (look.fog || 0) * 0.3;
         g.addColorStop(0, "rgba(176, 192, 190, " + (look.haze * 0.16).toFixed(3) + ")");
         g.addColorStop(1, "rgba(158, 174, 178, " + (look.haze * fogA).toFixed(3) + ")");
         ctx.fillStyle = g;
@@ -693,6 +759,12 @@
       resize,
       tick,
       render,
+      display: function () {
+        return blend ? paintLook(sample(), blend) : sample();
+      },
+      setRampSec: function (sec) {
+        rampTau = clamp(+sec, 0.25, 20) / 2.8;
+      },
       onChange: function (fn) {
         listeners.push(fn);
       },
@@ -719,5 +791,6 @@
     parseIpwho,
     resolveLocation,
     readLastPlace,
+    RAMP_SEC,
   };
 })(window);

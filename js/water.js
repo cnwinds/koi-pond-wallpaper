@@ -161,6 +161,7 @@ void main() {
 
   if (uHasLife > 0.5) {
     vec2 warp = n.xy * uDistort + vec2(h, -h) * uDistort * 0.28;
+    warp = clamp(warp, vec2(-0.012), vec2(0.012));
     vec2 lifeUv = uv + warp;
     vec4 lifeC = texture(uLife, lifeUv);
     vec3 sunT = vec3(1.03, 1.01, 0.97);
@@ -519,6 +520,8 @@ void main() {
               const fall = Math.exp(-dy * dy * 28);
               ox += Math.sin(ring.r * 0.07) * ring.a * 32 * fall;
             }
+            if (ox > 14) ox = 14;
+            if (ox < -14) ox = -14;
             ctx.drawImage(opts.life, 0, (y / cssH) * opts.life.height, opts.life.width, (bh / cssH) * opts.life.height + 1.5, ox, y, cssW, bh + 0.8);
           }
           ctx.restore();

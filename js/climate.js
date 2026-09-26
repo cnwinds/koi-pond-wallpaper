@@ -375,6 +375,7 @@
     let cssH = 1;
     let dpr = 1;
     let dripT = 0;
+    let markT = 0;
     const drops = [];
     const splashes = [];
     const listeners = [];
@@ -578,14 +579,14 @@
      * and the splash impulse when that drop hits the pond. */
     function rollDropSize() {
       const u = Math.random();
-      if (u < 0.55) return 0.16 + Math.random() * 0.22;
-      if (u < 0.86) return 0.46 + Math.random() * 0.2;
-      return 0.78 + Math.random() * 0.22;
+      if (u < 0.38) return 0.28 + Math.random() * 0.16;
+      if (u < 0.78) return 0.52 + Math.random() * 0.18;
+      return 0.8 + Math.random() * 0.2;
     }
 
     function splashStrength(size) {
-      const s = clamp(size, 0.1, 1);
-      return 0.03 + s * s * 0.15;
+      const s = clamp(size, 0.2, 1);
+      return 0.034 + s * s * 0.16;
     }
 
     function spawnDrop(fromTop) {
@@ -594,11 +595,11 @@
         x: Math.random() * cssW,
         y: fromTop ? -10 - Math.random() * 36 : Math.random() * cssH,
         size: size,
-        len: 6 + size * 30,
-        thick: 0.5 + size * 2.05,
-        vy: 300 + size * 400 + Math.random() * 70,
-        vx: -16 - size * 58 - Math.random() * 24,
-        a: 0.2 + size * 0.52,
+        len: 8 + size * 38,
+        thick: 0.7 + Math.pow(size, 1.55) * 4.4,
+        vy: 320 + size * 380 + Math.random() * 70,
+        vx: -18 - size * 52 - Math.random() * 22,
+        a: 0.34 + size * 0.48,
       };
     }
 
@@ -607,12 +608,12 @@
       splashes.push({
         x: d.x,
         y: clamp(d.y, 8, cssH - 6),
-        r: 1.2 + size * 3.4,
-        grow: 22 + size * 48,
+        r: 2.4 + size * 8,
+        grow: 26 + size * 64,
         age: 0,
-        life: 0.2 + size * 0.28,
-        a: 0.2 + size * 0.4,
-        thick: 0.7 + size * 1.6,
+        life: 0.45 + size * 0.5,
+        a: 0.36 + size * 0.4,
+        thick: 1 + size * 2.1,
       });
     }
 
@@ -679,26 +680,42 @@
         s.r += s.grow * dt;
         if (s.age >= s.life) splashes.splice(i, 1);
       }
-      if (!calm && look.rain > 0 && water && quality.rainDrips) {
-        dripT += dt * look.rain * quality.rainDrips * 2.2;
-        while (dripT >= 1) {
-          dripT -= 1;
+      if (!calm && look.rain > 0) {
+        markT += dt * look.rain * 3.4;
+        while (markT >= 1) {
+          markT -= 1;
           const d = pickSplashDrop();
-          if (d) {
-            impactDrop(d, water);
-          } else {
-            const size = rollDropSize();
-            const hit = {
+          if (d) spawnSplash(d);
+          else {
+            spawnSplash({
               x: (0.08 + Math.random() * 0.84) * cssW,
-              y: (0.1 + Math.random() * 0.78) * cssH,
-              size: size,
-            };
-            water.impulse(hit.x / cssW, hit.y / cssH, splashStrength(size));
-            spawnSplash(hit);
+              y: (0.12 + Math.random() * 0.76) * cssH,
+              size: rollDropSize(),
+            });
+          }
+        }
+        if (water && quality.rainDrips) {
+          dripT += dt * look.rain * quality.rainDrips * 2.8;
+          while (dripT >= 1) {
+            dripT -= 1;
+            const d = pickSplashDrop();
+            if (d) {
+              impactDrop(d, water);
+            } else {
+              const size = rollDropSize();
+              const hit = {
+                x: (0.08 + Math.random() * 0.84) * cssW,
+                y: (0.1 + Math.random() * 0.78) * cssH,
+                size: size,
+              };
+              water.impulse(hit.x / cssW, hit.y / cssH, splashStrength(size));
+              spawnSplash(hit);
+            }
           }
         }
       } else {
         dripT = 0;
+        markT = 0;
       }
     }
 
@@ -758,14 +775,28 @@
         ctx.lineCap = "round";
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
-          const fat = d.size > 0.72;
+          const fat = d.size > 0.74;
           ctx.globalAlpha = d.a;
           ctx.lineWidth = d.thick;
-          ctx.strokeStyle = fat ? "rgba(232, 240, 244, 0.92)" : "rgba(214, 228, 232, 0.78)";
+          ctx.strokeStyle = fat ? "rgba(236, 244, 246, 0.95)" : "rgba(214, 228, 232, 0.82)";
           ctx.beginPath();
           ctx.moveTo(d.x, d.y);
           ctx.lineTo(d.x - d.vx * (0.01 + d.size * 0.012), d.y - d.len);
           ctx.stroke();
+          if (fat) {
+            ctx.globalAlpha = d.a * 0.55;
+            ctx.lineWidth = Math.max(0.7, d.thick * 0.32);
+            ctx.strokeStyle = "rgba(255,255,255,0.88)";
+            ctx.beginPath();
+            ctx.moveTo(d.x, d.y);
+            ctx.lineTo(d.x - d.vx * 0.007, d.y - d.len * 0.55);
+            ctx.stroke();
+            ctx.globalAlpha = d.a * 0.8;
+            ctx.fillStyle = "rgba(236, 244, 246, 0.95)";
+            ctx.beginPath();
+            ctx.ellipse(d.x, d.y, 1.15 + d.size * 1.25, 1.7 + d.size * 1.7, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
         ctx.globalAlpha = 1;
       }

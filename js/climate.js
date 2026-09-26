@@ -643,7 +643,7 @@
         x: Math.random() * cssW,
         y: Math.random() * cssH,
         z: fromSky ? 1 : Math.random(),
-        vz: 1.25 + Math.random() * 0.7,
+        vz: 0.95 + Math.random() * 0.45,
         driftX: (Math.random() - 0.5) * 16,
         driftY: (Math.random() - 0.5) * 16,
         a: 0.32 + Math.random() * 0.28,
@@ -654,7 +654,7 @@
       d.x = Math.random() * cssW;
       d.y = Math.random() * cssH;
       d.z = 0.78 + Math.random() * 0.22;
-      d.vz = 1.25 + Math.random() * 0.7;
+      d.vz = 0.95 + Math.random() * 0.45;
       d.driftX = (Math.random() - 0.5) * 16;
       d.driftY = (Math.random() - 0.5) * 16;
       d.a = 0.32 + Math.random() * 0.28;
@@ -668,7 +668,7 @@
       const landed = [];
       for (let i = 0; i < drops.length; i++) {
         const d = drops[i];
-        d.z -= d.vz * dt;
+        d.z -= d.vz * dt * (0.42 + 0.58 * Math.max(d.z, 0));
         d.x += d.driftX * dt;
         d.y += d.driftY * dt;
         if (d.x < -8) d.x += cssW + 16;
@@ -755,22 +755,22 @@
       if (drops.length) {
         const cx = cssW * 0.5;
         const cy = cssH * 0.45;
-        ctx.strokeStyle = "rgba(214, 228, 232, 0.78)";
-        ctx.fillStyle = "rgba(220, 232, 236, 0.95)";
-        ctx.lineWidth = 1.15;
         ctx.lineCap = "round";
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
           const near = clamp(1 - d.z, 0, 1);
-          const ease = near * near;
-          const alpha = d.a * (0.12 + 0.78 * ease);
-          const headR = 0.55 + 1.45 * ease;
-          const tail = 1.6 + 6.2 * ease;
+          const ease = near * near * (3 - 2 * near);
+          const alpha = d.a * (0.34 + 0.66 * ease);
+          const headR = 0.85 + 1.7 * ease;
+          const tail = 2.4 + 7.2 * ease;
           const px = d.x - cx;
           const py = d.y - cy;
           const plen = Math.hypot(px, py) || 1;
-          const ux = d.driftX * 0.035 + (px / plen) * 0.4 * d.z;
-          const uy = d.driftY * 0.035 + (py / plen) * 0.4 * d.z;
+          const ux = d.driftX * 0.03 + (px / plen) * 0.32 * d.z;
+          const uy = d.driftY * 0.03 + (py / plen) * 0.32 * d.z;
+          ctx.strokeStyle = "rgba(226, 236, 240, 0.9)";
+          ctx.fillStyle = "rgba(232, 240, 244, 1)";
+          ctx.lineWidth = 1.15;
           ctx.globalAlpha = alpha;
           ctx.beginPath();
           ctx.moveTo(d.x + ux * tail, d.y + uy * tail);
@@ -786,10 +786,10 @@
         for (let i = 0; i < hits.length; i++) {
           const hit = hits[i];
           const t = clamp(hit.age / 0.18, 0, 1);
-          ctx.globalAlpha = 0.34 * (1 - t);
-          ctx.fillStyle = "rgba(220, 232, 236, 1)";
+          ctx.globalAlpha = 0.55 * (1 - t);
+          ctx.fillStyle = "rgba(230, 238, 242, 1)";
           ctx.beginPath();
-          ctx.arc(hit.x, hit.y, 2.6, 0, Math.PI * 2);
+          ctx.arc(hit.x, hit.y, 2.7, 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.globalAlpha = 1;

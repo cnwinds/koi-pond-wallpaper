@@ -275,7 +275,7 @@
         : sky === "cloudy"
           ? [0.72, 0.8, 0.88]
           : sky === "rain"
-            ? [0.5, 0.62, 0.66]
+            ? [0.66, 0.78, 0.8]
             : [0.8, 0.86, 0.84];
     const nightTint = [0.3, 0.48, 0.98];
     const tint = [
@@ -288,7 +288,7 @@
     tint[1] = lerp(tint[1], 0.78, twilight * 0.18);
     tint[2] = lerp(tint[2], 0.62, twilight * 0.2);
 
-    let exposure = lerp(0.32, sky === "clear" ? 1.06 : sky === "cloudy" ? 0.74 : sky === "rain" ? 0.56 : 0.68, dayness);
+    let exposure = lerp(0.32, sky === "clear" ? 1.06 : sky === "cloudy" ? 0.74 : sky === "rain" ? 0.74 : 0.68, dayness);
     if (sky === "fog") exposure *= 0.82;
 
     let causticGain = dayness * (sky === "clear" ? 1.15 : sky === "cloudy" ? 0.16 : 0.05);
@@ -772,29 +772,29 @@
       if (drops.length) {
         ctx.lineCap = "butt";
         ctx.lineJoin = "bevel";
-        ctx.lineWidth = 0.65;
+        /* Hairline in CSS pixels. Not scaled by drop size, so it cannot become a blob. */
+        ctx.lineWidth = 1.15;
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
           if (d.z < 0.08 || d.z > 0.9) continue;
           const wave = Math.sin(d.phase || 0);
           const fade = wave > 0 ? wave * wave : 0;
-          if (fade < 0.45) continue;
+          if (fade < 0.2) continue;
           const head = projectDrop(d, d.z);
           /* Drop size is ripple-only. Streak length and width do not grow with it. */
-          const tail = projectDrop(d, Math.min(1, d.z + 0.2));
+          const tail = projectDrop(d, Math.min(1, d.z + 0.36));
           const dx = head.x - tail.x;
           const dy = head.y - tail.y;
           const len = Math.hypot(dx, dy) || 1;
-          if (len < 16) continue;
-          /* Stop short of the water end so the tip cannot rasterize as a dot. */
-          const x1 = tail.x + dx * 0.78;
-          const y1 = tail.y + dy * 0.78;
+          if (len < 12) continue;
+          const x1 = tail.x + dx * 0.92;
+          const y1 = tail.y + dy * 0.92;
           const g = ctx.createLinearGradient(tail.x, tail.y, x1, y1);
-          g.addColorStop(0, "rgba(186, 196, 202, 0.7)");
-          g.addColorStop(0.62, "rgba(186, 196, 202, 0.14)");
-          g.addColorStop(1, "rgba(186, 196, 202, 0)");
+          g.addColorStop(0, "rgba(186, 204, 214, 0.95)");
+          g.addColorStop(0.7, "rgba(186, 204, 214, 0.62)");
+          g.addColorStop(1, "rgba(186, 204, 214, 0)");
           ctx.strokeStyle = g;
-          ctx.globalAlpha = Math.min(0.16, d.a * fade * 0.2);
+          ctx.globalAlpha = Math.min(0.62, 0.28 + fade * 0.48);
           ctx.beginPath();
           ctx.moveTo(tail.x, tail.y);
           ctx.lineTo(x1, y1);

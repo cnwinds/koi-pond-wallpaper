@@ -187,9 +187,9 @@
     state.quality = parseQuality(state.quality) || "mid";
     state.fps = clamp(state.fps | 0, 8, 60);
     state.ui = !!state.ui;
-    if (!new URLSearchParams(global.location.search || "").has("ui")) {
-      state.ui = true;
-    }
+    try {
+      if (!new URLSearchParams(global.location.search || "").has("ui")) state.ui = true;
+    } catch (err) {}
     state.demo = !!state.demo;
     state.lat = parseCoord(state.lat, -90, 90);
     if (state.lat == null) state.lat = defaults.lat;

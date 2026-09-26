@@ -65,9 +65,11 @@ uniform float uExposure;
 uniform vec3 uTint;
 uniform float uCausticGain;
 uniform float uHaze;
+uniform float uFog;
 uniform float uDayness;
 uniform float uDistort;
 uniform float uHasLife;
+uniform float uRippleCalm;
 
 vec2 hash22(vec2 p) {
   p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
@@ -127,8 +129,10 @@ void main() {
     sin((uv.x * aspect + uv.y) * 3.4 - uTime * 0.17) * 0.008
   );
 
+  float calm = clamp(uRippleCalm, 0.0, 1.0);
   vec3 n = normalize(vec3((hL - hR) + amb * 4.0, (hD - hU) + amb * 3.0, 0.16));
-  vec2 refr = uv + n.xy * 0.05;
+  n.xy *= mix(1.0, 0.28, calm);
+  vec2 refr = uv + n.xy * mix(0.05, 0.012, calm);
 
   vec2 d = (refr - 0.5) * vec2(aspect, 1.0);
   float radial = length(d);
@@ -154,7 +158,8 @@ void main() {
   if (uCaustics > 0.5) {
     cau = caustic(refr * vec2(aspect, 1.0) + n.xy * 0.8, uTime);
     cau2 = caustic(refr.yx * vec2(1.0, aspect) * 0.85 - n.xy * 0.4, uTime * 0.82 + 12.0);
-    floorCol += vec3(0.48, 0.64, 0.40) * (cau * 0.32 + cau2 * 0.18) * (0.5 + 0.5 * depth) * uCausticGain;
+    float cauAmt = (0.5 + 0.5 * depth) * uCausticGain * (1.0 - calm * 0.85);
+    floorCol += vec3(0.48, 0.64, 0.40) * (cau * 0.32 + cau2 * 0.18) * cauAmt;
   }
 
   vec3 water = floorCol * mix(vec3(0.7, 0.82, 1.05), vec3(0.78, 0.96, 0.93), uDayness);
@@ -176,7 +181,6 @@ void main() {
   water += (grain - 0.5) * 0.012;
 
   water *= uTint * uExposure;
-  water = mix(water, vec3(0.62, 0.7, 0.72) * uExposure, clamp(uHaze, 0.0, 0.75));
 
   if (uHasLife > 0.5) {
     vec2 warp = n.xy * uDistort;
@@ -190,8 +194,27 @@ void main() {
     vec3 lit = lifeC.rgb * lightT * lightE;
     lit += vec3(0.42, 0.58, 0.36) * (cau * 0.14 + cau2 * 0.07) * uCausticGain;
     lit *= 1.0 + h * 0.18;
-    lit = mix(lit, vec3(0.7, 0.78, 0.8) * uExposure, clamp(uHaze * 0.45, 0.0, 0.4));
     water = mix(water, lit, clamp(lifeC.a, 0.0, 1.0));
+  }
+
+  /* Atmosphere lives in this shader so weather→clear never depends on a
+     full-screen Canvas2D overlay (the WorkerW/WebView2 mosaic source). */
+  float hazeA = clamp(uHaze, 0.0, 0.88);
+  water = mix(water, vec3(0.68, 0.74, 0.76) * uExposure, hazeA * 0.7);
+  water = mix(water, vec3(0.62, 0.70, 0.72) * uExposure, clamp(uFog, 0.0, 1.0) * (0.18 + vig * 0.28));
+  float night = 1.0 - uDayness;
+  if (night > 0.02) {
+    water = mix(water, water * vec3(0.42, 0.50, 0.78), clamp(night * 0.55, 0.0, 0.55));
+    water = mix(water, vec3(0.01, 0.02, 0.06), night * 0.22 * (1.0 - vig));
+    if (night > 0.45) {
+      vec2 moon = vec2(0.78, 0.86);
+      float md = length((uv - moon) * vec2(aspect, 1.15));
+      water += vec3(0.82, 0.86, 0.95) * smoothstep(0.11, 0.0, md) * 0.38 * night;
+    }
+  }
+  if (uDayness > 0.12 && uDayness < 0.55) {
+    float dusk = exp(-pow((uDayness - 0.3) / 0.16, 2.0));
+    water += vec3(0.32, 0.12, 0.04) * dusk * 0.16 * uExposure;
   }
 
   fragColor = vec4(water, 1.0);
@@ -313,9 +336,11 @@ void main() {
       uTint: gl.getUniformLocation(waterProg, "uTint"),
       uCausticGain: gl.getUniformLocation(waterProg, "uCausticGain"),
       uHaze: gl.getUniformLocation(waterProg, "uHaze"),
+      uFog: gl.getUniformLocation(waterProg, "uFog"),
       uDayness: gl.getUniformLocation(waterProg, "uDayness"),
       uDistort: gl.getUniformLocation(waterProg, "uDistort"),
       uHasLife: gl.getUniformLocation(waterProg, "uHasLife"),
+      uRippleCalm: gl.getUniformLocation(waterProg, "uRippleCalm"),
     };
 
     let lifeTex = gl.createTexture();
@@ -464,9 +489,11 @@ void main() {
       gl.uniform3f(water.uTint, tint[0], tint[1], tint[2]);
       gl.uniform1f(water.uCausticGain, opts.causticGain != null ? opts.causticGain : 1);
       gl.uniform1f(water.uHaze, opts.haze != null ? opts.haze : 0);
+      gl.uniform1f(water.uFog, opts.fog != null ? opts.fog : 0);
       gl.uniform1f(water.uDayness, opts.dayness != null ? opts.dayness : 1);
       gl.uniform1f(water.uDistort, opts.distort != null ? opts.distort : 0.04);
       gl.uniform1f(water.uHasLife, hasLife ? 1 : 0);
+      gl.uniform1f(water.uRippleCalm, opts.rippleCalm != null ? opts.rippleCalm : 0);
       drawQuad(waterProg);
     }
 
@@ -484,7 +511,7 @@ void main() {
   }
 
   function createCanvas2D(canvas) {
-    const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+    const ctx = canvas.getContext("2d", { alpha: false, desynchronized: false });
     const rings = [];
     let t = 0;
 
@@ -596,6 +623,10 @@ void main() {
           ctx.fillStyle = "rgba(150, 170, 174, " + Math.min(0.55, opts.haze * 0.62) + ")";
           ctx.fillRect(0, 0, cssW, cssH);
         }
+        if (opts.fog) {
+          ctx.fillStyle = "rgba(158, 178, 180, " + Math.min(0.4, opts.fog * 0.28) + ")";
+          ctx.fillRect(0, 0, cssW, cssH);
+        }
       },
     };
   }
@@ -615,6 +646,7 @@ void main() {
     let damp = 0.988;
     let rainAmt = 0;
     let rainSettle = 0;
+    let lastRipple = quality.ripple;
 
     return {
       kind: function () {
@@ -627,8 +659,15 @@ void main() {
         queue.push(nx, ny, strength, radius != null ? radius : 0);
       },
       setQuality: function (nextQuality) {
+        lastRipple = nextQuality.ripple;
         damp = nextQuality.ripple >= 400 ? 0.991 : nextQuality.ripple >= 240 ? 0.988 : 0.983;
         if (impl.rebuild) impl.rebuild(nextQuality.ripple);
+      },
+      recoverSim: function () {
+        if (impl.rebuild) impl.rebuild(lastRipple);
+      },
+      rainSettleLeft: function () {
+        return rainSettle;
       },
       setRain: function (amount) {
         rainAmt = amount || 0;

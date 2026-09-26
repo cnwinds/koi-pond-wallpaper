@@ -84,10 +84,9 @@
   }
 
   let lastQuality = config.state.quality;
-  let lastRainAmt = 0;
-  let lastBlendKey = "";
   let refreshLife = false;
   let surfaceCheckT = 0;
+  let weatherRecovered = true;
 
   function applyWorldSettings() {
     const preset = config.preset();
@@ -143,40 +142,38 @@
     return config.state.fps;
   }
 
-  function loop(now) {
-    raf = requestAnimationFrame(loop);
-    if (hiddenPause || livelyPause) return;
-    if (!last) last = now;
-    const raw = Math.min(0.05, (now - last) / 1000);
-    last = now;
-    const fps = currentFps();
-    if (fps <= 0) return;
-    acc += raw;
-    const step = 1 / fps;
-    if (acc < step - 0.001) return;
-    const dt = Math.min(0.05, acc);
-    acc = 0;
+  function drawFrame(dt) {
+    dt = Math.min(0.05, Math.max(0, dt || 0.016));
     time += dt;
-
     const preset = config.preset();
     const target = climate.sample();
     const calm = config.state.reducedMotion;
     const look = climate.tick(dt, target, preset, water, calm) || target;
     const ambient = (calm ? 0.25 : preset.ambientWaves) * look.ambientMul;
     if (water.setRain) water.setRain(look.rain);
+    const veil = Math.max(look.haze || 0, look.fog || 0, look.rain || 0);
+    const targetClear =
+      (target.sky || "clear") === "clear" ||
+      ((target.rain || 0) < 0.04 && (target.haze || 0) < 0.1 && (target.fog || 0) < 0.1);
     const blending =
       Math.abs((look.rain || 0) - (target.rain || 0)) > 0.015 ||
       Math.abs((look.dayness || 0) - (target.dayness || 0)) > 0.015 ||
-      Math.abs((look.haze || 0) - (target.haze || 0)) > 0.02;
-    const rainBand = look.rain > 0.45 ? "h" : look.rain > 0.18 ? "m" : look.rain > 0.04 ? "l" : "z";
-    const blendKey = (target.sky || "auto") + "/" + (target.timeOverride || "auto") + "/" + rainBand;
-    const crossedRain = (lastRainAmt > 0.2 && look.rain <= 0.2) || (lastRainAmt <= 0.2 && look.rain > 0.2);
-    lastRainAmt = look.rain;
-    if (blending && blendKey !== lastBlendKey) {
-      lastBlendKey = blendKey;
-      resize({ forceRealloc: true });
-    } else if (crossedRain) {
-      resize({ forceRealloc: true });
+      Math.abs((look.haze || 0) - (target.haze || 0)) > 0.02 ||
+      Math.abs((look.fog || 0) - (target.fog || 0)) > 0.02;
+    const settledClear =
+      targetClear &&
+      !blending &&
+      (look.rain || 0) < 0.04 &&
+      Math.abs((look.fog || 0) - (target.fog || 0)) < 0.02;
+    if (!targetClear || blending) {
+      weatherRecovered = false;
+    } else if (!weatherRecovered && settledClear) {
+      weatherRecovered = true;
+      /* Same FBO rebuild+clear as a quality toggle. Do not 1px-realloc
+         the display canvases mid-fade: that was a same-call no-op on
+         WebView2 and left the 2D weather layer in place. */
+      if (water.recoverSim) water.recoverSim();
+      refreshLife = true;
     }
     surfaceCheckT += dt;
     if (surfaceCheckT > 0.5) {
@@ -185,19 +182,25 @@
         resize({ forceRealloc: true });
       }
     }
+    const rainLeft = water.rainSettleLeft ? water.rainSettleLeft() : 0;
+    const rippleCalm = Math.min(1, veil * 0.95 + (rainLeft > 0 ? 0.28 : 0));
+    const causticsOn =
+      preset.caustics && !calm && look.causticGain > 0.15 && veil < 0.08 && rippleCalm < 0.35;
     water.update(dt);
     world.update(dt, water, preset, look);
     world.render(preset, look);
     const needLife = refreshLife;
     refreshLife = false;
     water.render(cssW, cssH, pixelW, pixelH, time, {
-      caustics: preset.caustics && !calm && look.causticGain > 0.04,
+      caustics: causticsOn,
       ambient: ambient,
       exposure: look.exposure,
       tint: look.tint,
       causticGain: look.causticGain,
       haze: look.haze,
+      fog: look.fog,
       dayness: look.dayness,
+      rippleCalm: rippleCalm,
       distort: calm ? preset.lifeDistort * 0.35 : preset.lifeDistort,
       life: lifeCanvas,
       refreshLife: needLife,
@@ -212,6 +215,23 @@
         world.feed(cssW * (0.3 + Math.random() * 0.4), cssH * (0.3 + Math.random() * 0.4), water);
       }
     }
+    return look;
+  }
+
+  function loop(now) {
+    raf = requestAnimationFrame(loop);
+    if (hiddenPause || livelyPause) return;
+    if (!last) last = now;
+    const raw = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    const fps = currentFps();
+    if (fps <= 0) return;
+    acc += raw;
+    const step = 1 / fps;
+    if (acc < step - 0.001) return;
+    const dt = Math.min(0.05, acc);
+    acc = 0;
+    drawFrame(dt);
   }
 
   function start() {
@@ -504,6 +524,22 @@
     preview: preview,
     openSettings: openSettings,
     applyHostCommand: applyHostCommand,
+    drawFrame: drawFrame,
+    snapshot: function () {
+      const look = climate.display ? climate.display() : null;
+      return {
+        look: look,
+        quality: config.state.quality,
+        water: { w: waterCanvas.width, h: waterCanvas.height, kind: water.kind() },
+        life: { w: lifeCanvas.width, h: lifeCanvas.height },
+        wx: {
+          w: wxCanvas.width,
+          h: wxCanvas.height,
+          idle: !!(wxCanvas.classList && wxCanvas.classList.contains("is-idle")),
+          busy: climate.overlayBusy ? climate.overlayBusy() : 0,
+        },
+      };
+    },
   };
 
   resize();

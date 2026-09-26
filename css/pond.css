@@ -49,6 +49,11 @@ body {
   z-index: 2;
 }
 
+#wx.is-idle {
+  visibility: hidden;
+  opacity: 0;
+}
+
 #hud {
   position: fixed;
   inset: 0;

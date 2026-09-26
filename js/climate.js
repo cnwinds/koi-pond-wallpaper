@@ -6,6 +6,7 @@
  * updates fade (rain starts/stops, day↔night) instead of snapping.
  * Rain uses an oblique 3D projection: drops travel along a slanted
  * fall toward a water-plane hit, then splash. Not screen-Y streaks.
+ * Night/dusk/haze/fog grade in the water shader; this canvas is rain only.
  */
 (function (global) {
   const SHANGHAI = { lat: 31.2304, lon: 121.4737, tz: "Asia/Shanghai", name: "上海" };
@@ -634,6 +635,10 @@
       cssH = h;
       dpr = pixelRatio;
       if (!canvas) return;
+      if (!drops.length && !hits.length) {
+        releaseOverlay();
+        return;
+      }
       const pw = Math.max(1, Math.round(w * pixelRatio));
       const ph = Math.max(1, Math.round(h * pixelRatio));
       if (force && canvas.width === pw && canvas.height === ph) {
@@ -712,58 +717,50 @@
       return look;
     }
 
-    function render(look) {
+    function snap() {
+      const look = sample();
+      blend = captureBlend(look);
+      return paintLook(look, blend);
+    }
+
+    function overlayBusy() {
+      return drops.length + hits.length;
+    }
+
+    function releaseOverlay() {
+      if (!canvas) return;
+      canvas.width = 1;
+      canvas.height = 1;
+      canvas.classList.add("is-idle");
+      canvas.style.visibility = "hidden";
+      if (ctx) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, 1, 1);
+      }
+    }
+
+    function ensureOverlaySize() {
+      if (!canvas) return;
+      const pw = Math.max(1, Math.round(cssW * dpr));
+      const ph = Math.max(1, Math.round(cssH * dpr));
+      if (canvas.width !== pw) canvas.width = pw;
+      if (canvas.height !== ph) canvas.height = ph;
+      canvas.classList.remove("is-idle");
+      canvas.style.visibility = "visible";
+    }
+
+    function render(_look) {
       if (!ctx) return;
+      /* Rain hits only. Night/dusk/haze live in the water shader so a
+         stale full-screen 2D surface cannot mosaic the pond as weather
+         intensity drops toward clear. */
+      if (!drops.length && !hits.length) {
+        releaseOverlay();
+        return;
+      }
+      ensureOverlaySize();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssW, cssH);
-
-      const night = 1 - look.dayness;
-      if (night > 0.02) {
-        ctx.fillStyle = "rgba(2, 8, 22, " + (night * 0.3).toFixed(3) + ")";
-        ctx.fillRect(0, 0, cssW, cssH);
-        const vg = ctx.createRadialGradient(
-          cssW * 0.5,
-          cssH * 0.42,
-          Math.min(cssW, cssH) * 0.18,
-          cssW * 0.5,
-          cssH * 0.5,
-          Math.max(cssW, cssH) * 0.78
-        );
-        vg.addColorStop(0, "rgba(0,0,0,0)");
-        vg.addColorStop(1, "rgba(0, 2, 12, " + (night * 0.28).toFixed(3) + ")");
-        ctx.fillStyle = vg;
-        ctx.fillRect(0, 0, cssW, cssH);
-        if (night > 0.45) {
-          const mx = cssW * 0.78;
-          const my = cssH * 0.14;
-          const mg = ctx.createRadialGradient(mx, my, 0, mx, my, 70);
-          mg.addColorStop(0, "rgba(230, 236, 248, " + (0.42 * night).toFixed(3) + ")");
-          mg.addColorStop(0.28, "rgba(180, 200, 230, " + (0.14 * night).toFixed(3) + ")");
-          mg.addColorStop(1, "rgba(0,0,0,0)");
-          ctx.fillStyle = mg;
-          ctx.fillRect(mx - 80, my - 80, 160, 160);
-        }
-      }
-      if (look.dayness > 0.12 && look.dayness < 0.55) {
-        const dusk = Math.exp(-Math.pow((look.dayness - 0.3) / 0.16, 2));
-        ctx.fillStyle = "rgba(255, 132, 64, " + (dusk * 0.14).toFixed(3) + ")";
-        ctx.fillRect(0, 0, cssW, cssH);
-      }
-      if (look.haze > 0.02) {
-        const g = ctx.createRadialGradient(
-          cssW * 0.5,
-          cssH * 0.42,
-          Math.min(cssW, cssH) * 0.08,
-          cssW * 0.5,
-          cssH * 0.5,
-          Math.max(cssW, cssH) * 0.74
-        );
-        const fogA = 0.28 + (look.fog || 0) * 0.3;
-        g.addColorStop(0, "rgba(176, 192, 190, " + (look.haze * 0.16).toFixed(3) + ")");
-        g.addColorStop(1, "rgba(158, 174, 178, " + (look.haze * fogA).toFixed(3) + ")");
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, cssW, cssH);
-      }
       if (drops.length) {
         ctx.lineCap = "round";
         ctx.strokeStyle = "rgba(226, 236, 240, 0.92)";
@@ -812,6 +809,8 @@
       resize,
       tick,
       render,
+      snap,
+      overlayBusy,
       display: function () {
         return blend ? paintLook(sample(), blend) : sample();
       },

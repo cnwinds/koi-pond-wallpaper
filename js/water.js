@@ -160,8 +160,8 @@ void main() {
   water = mix(water, vec3(0.62, 0.7, 0.72) * uExposure, clamp(uHaze, 0.0, 0.75));
 
   if (uHasLife > 0.5) {
-    vec2 warp = n.xy * uDistort + vec2(h, -h) * uDistort * 0.28;
-    warp = clamp(warp, vec2(-0.012), vec2(0.012));
+    vec2 warp = n.xy * uDistort;
+    warp = clamp(warp, vec2(-0.008), vec2(0.008));
     vec2 lifeUv = uv + warp;
     vec4 lifeC = texture(uLife, lifeUv);
     vec3 sunT = vec3(1.03, 1.01, 0.97);

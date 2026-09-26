@@ -59,14 +59,17 @@ function staticChecks() {
   assert(!climate.includes("rgba(2, 8, 22"), "climate.render still paints night fill", failures);
 
   assert(!app.includes("lastBlendKey"), "app.js still reallocates on blendKey", failures);
-  assert(app.includes("recoverSim"), "app.js never calls recoverSim after settle", failures);
-  assert(app.includes("rippleCalm"), "app.js does not pass rippleCalm", failures);
-  assert(app.includes("rainingHard"), "rippleCalm must stay off while rain is falling", failures);
+  assert(!app.includes("recoverSim"), "settling clear must not wipe ripple FBOs", failures);
+  assert(!app.includes("causticGain > 0.15"), "caustics still gated on gain", failures);
+  assert(!app.includes("veil < 0.08"), "caustics still gated on veil", failures);
+  assert(!app.includes("rainingHard"), "ripple calm still steps on a rain threshold", failures);
+  assert(app.includes("causticWeight"), "app.js does not pass a continuous caustic weight", failures);
   assert(app.includes("fog: look.fog"), "app.js does not pass fog", failures);
+  assert(water.includes("sunW"), "caustics are not a continuous weight in WATER_FS", failures);
   assert(css.includes("#wx.is-idle"), "css missing #wx.is-idle hide rule", failures);
 
   const csproj = read("win/KoiPondWallpaper/KoiPondWallpaper.csproj");
-  assert(csproj.includes("<Version>0.3.7</Version>"), "csproj not bumped to 0.3.7", failures);
+  assert(csproj.includes("<Version>0.3.8</Version>"), "csproj not bumped to 0.3.8", failures);
   return failures;
 }
 
@@ -269,6 +272,62 @@ async function drive(page, seconds) {
   }, seconds);
 }
 
+async function sampleSun(page, seconds) {
+  return page.evaluate((sec) => {
+    function metric() {
+      const water = document.getElementById("water");
+      const tw = 160;
+      const th = 90;
+      const tmp = document.createElement("canvas");
+      tmp.width = tw;
+      tmp.height = th;
+      const ctx = tmp.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(water, 0, 0, tw, th);
+      const data = ctx.getImageData(0, 0, tw, th).data;
+      let sum = 0;
+      let hi = 0;
+      const n = tw * th;
+      for (let i = 0; i < n; i++) {
+        const y = data[i * 4] * 0.299 + data[i * 4 + 1] * 0.587 + data[i * 4 + 2] * 0.114;
+        sum += y;
+        if (y > 155) hi++;
+      }
+      const look = KoiPond.snapshot().look;
+      return { mean: sum / n, hi: hi / n, gain: look.causticGain, day: look.dayness };
+    }
+    const dt = 0.15;
+    const steps = Math.max(1, Math.round(sec / dt));
+    const samples = [];
+    for (let i = 0; i < steps; i++) {
+      KoiPond.drawFrame(dt);
+      samples.push(metric());
+    }
+    return samples;
+  }, seconds);
+}
+
+function lightPop(samples) {
+  if (!samples || samples.length < 4) return { pop: false, lateMax: 0, lateT: 0, span: 0 };
+  const his = samples.map(function (s) { return s.hi; });
+  const span = his[his.length - 1] - his[0];
+  let lateMax = 0;
+  let lateT = 0;
+  for (let i = 1; i < his.length; i++) {
+    const t = i * 0.15;
+    const d = his[i] - his[i - 1];
+    if (t > 1.05 && d > lateMax) {
+      lateMax = d;
+      lateT = t;
+    }
+  }
+  return {
+    span: span,
+    lateMax: lateMax,
+    lateT: lateT,
+    pop: span > 0.03 && lateMax > Math.max(0.045, span * 0.38),
+  };
+}
+
 async function snapSky(page, sky) {
   await page.evaluate((next) => {
     KoiPond.preview({ sky: next, time: "day", ui: 0 });
@@ -325,14 +384,19 @@ async function runBrowser() {
     { from: "cloudy", label: "cloudy" },
     { from: "fog", label: "fog" },
     { from: "rain", label: "rain" },
+    { from: "clear", time: "night", label: "night" },
   ].filter(function (step) {
     return !only || step.label === only;
   });
   const report = [];
 
   for (const step of paths) {
-    console.log("path", step.label + "→clear");
-    await snapSky(page, step.from);
+    console.log("path", step.label + "→day-clear");
+    await page.evaluate((sky, time) => {
+      KoiPond.preview({ sky: sky, time: time, ui: 0 });
+      if (KoiPond.climate.snap) KoiPond.climate.snap();
+      KoiPond.drawFrame(1 / 30);
+    }, step.from, step.time || "day");
     if (step.from === "rain") {
       await drive(page, 1.05);
       const motion = await page.evaluate(() => {
@@ -373,11 +437,11 @@ async function runBrowser() {
     }
     await drive(page, 0.35);
     await page.evaluate(() => KoiPond.preview({ sky: "clear", time: "day", ui: 0 }));
-    await drive(page, 1.55);
+    const early = await sampleSun(page, 1.65);
     const midFile = path.join(outDir, step.label + "-to-clear-mid.png");
     const mid = await captureFrame(page, midFile);
-    console.log("  mid haze/rain/fog", mid.snap && mid.snap.look && mid.snap.look.haze, mid.snap && mid.snap.look && mid.snap.look.rain, mid.snap && mid.snap.look && mid.snap.look.fog);
-    await drive(page, 4.4);
+    console.log("  mid haze/rain/fog/day/gain", mid.snap && mid.snap.look && mid.snap.look.haze, mid.snap && mid.snap.look && mid.snap.look.rain, mid.snap && mid.snap.look && mid.snap.look.fog, mid.snap && mid.snap.look && mid.snap.look.dayness, mid.snap && mid.snap.look && mid.snap.look.causticGain);
+    const late = await sampleSun(page, 4.35);
     const afterFile = path.join(outDir, step.label + "-to-clear-after.png");
     const after = await captureFrame(page, afterFile);
     console.log("  after haze/rain", after.snap && after.snap.look && after.snap.look.haze, after.snap && after.snap.look && after.snap.look.rain, "wx", after.snap && after.snap.wx);
@@ -400,8 +464,19 @@ async function runBrowser() {
     if (step.from === "rain" && midLook && midLook.rain < 0.08) {
       failures.push(step.label + " mid: rain already gone (" + midLook.rain + ")");
     }
-    if (step.from !== "rain" && midLook && midLook.haze < 0.03 && midLook.fog < 0.05) {
+    if (step.label !== "night" && step.from !== "rain" && midLook && midLook.haze < 0.03 && midLook.fog < 0.05) {
       failures.push(step.label + " mid: veil already gone (haze=" + midLook.haze + ")");
+    }
+    if (step.label === "night" && midLook && (midLook.dayness < 0.2 || midLook.dayness > 0.9)) {
+      failures.push(step.label + " mid: dayness not mid-ramp (" + midLook.dayness + ")");
+    }
+    if (midLook && afterLook && afterLook.causticGain < midLook.causticGain + 0.05) {
+      failures.push(step.label + " causticGain did not keep rising through the blend");
+    }
+    const ramp = lightPop(early.concat(late));
+    console.log("  light ramp", ramp);
+    if (ramp.pop) {
+      failures.push(step.label + " sunny light popped late (Δhi " + ramp.lateMax.toFixed(3) + " at " + ramp.lateT.toFixed(2) + "s)");
     }
     if (midMetrics.mean < 12) failures.push(step.label + " mid: frame too dark (mean " + midMetrics.mean.toFixed(1) + ")");
     if (afterMetrics.mean < 12) failures.push(step.label + " after: frame too dark (mean " + afterMetrics.mean.toFixed(1) + ")");

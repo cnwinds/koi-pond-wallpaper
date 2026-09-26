@@ -4,6 +4,8 @@
  * fetched at most every 20 minutes, cached, and never blocks the pond.
  * Displayed light/weather eases toward the target so previews and live
  * updates fade (rain starts/stops, day↔night) instead of snapping.
+ * Rain is drawn as drops falling onto the water from above (top-down),
+ * not as screen-Y streaks.
  */
 (function (global) {
   const SHANGHAI = { lat: 31.2304, lon: 121.4737, tz: "Asia/Shanghai", name: "上海" };
@@ -363,7 +365,7 @@
   function create(options) {
     options = options || {};
     const canvas = options.canvas;
-    const ctx = canvas ? canvas.getContext("2d", { alpha: true, desynchronized: true }) : null;
+    const ctx = canvas ? canvas.getContext("2d", { alpha: true, desynchronized: false }) : null;
 
     let lat = options.lat != null ? options.lat : SHANGHAI.lat;
     let lon = options.lon != null ? options.lon : SHANGHAI.lon;
@@ -384,6 +386,7 @@
     let dpr = 1;
     let dripT = 0;
     const drops = [];
+    const hits = [];
     const listeners = [];
     let blend = null;
     let rampTau = options.rampSec != null ? clamp(+options.rampSec, 0.25, 20) / 2.8 : RAMP_SEC / 2.8;
@@ -635,37 +638,62 @@
       canvas.height = Math.max(1, Math.round(h * pixelRatio));
     }
 
-    function spawnDrop() {
+    function spawnDrop(fromSky) {
       return {
         x: Math.random() * cssW,
         y: Math.random() * cssH,
-        len: 12 + Math.random() * 18,
-        vy: 420 + Math.random() * 260,
-        vx: -40 - Math.random() * 50,
-        a: 0.28 + Math.random() * 0.32,
+        z: fromSky ? 1 : Math.random(),
+        vz: 1.25 + Math.random() * 0.7,
+        driftX: (Math.random() - 0.5) * 16,
+        driftY: (Math.random() - 0.5) * 16,
+        a: 0.32 + Math.random() * 0.28,
       };
+    }
+
+    function recycleDrop(d) {
+      d.x = Math.random() * cssW;
+      d.y = Math.random() * cssH;
+      d.z = 0.78 + Math.random() * 0.22;
+      d.vz = 1.25 + Math.random() * 0.7;
+      d.driftX = (Math.random() - 0.5) * 16;
+      d.driftY = (Math.random() - 0.5) * 16;
+      d.a = 0.32 + Math.random() * 0.28;
     }
 
     function tick(dt, target, quality, water, calm) {
       const look = stepBlend(target, dt, calm);
       const want = calm ? 0 : Math.round((quality.rainStreaks || 0) * (look.rain || 0));
-      while (drops.length < want) drops.push(spawnDrop());
+      while (drops.length < want) drops.push(spawnDrop(true));
       while (drops.length > want) drops.pop();
+      const landed = [];
       for (let i = 0; i < drops.length; i++) {
         const d = drops[i];
-        d.y += d.vy * dt;
-        d.x += d.vx * dt;
-        if (d.y > cssH + 16 || d.x < -20) {
-          d.x = Math.random() * cssW;
-          d.y = -12;
+        d.z -= d.vz * dt;
+        d.x += d.driftX * dt;
+        d.y += d.driftY * dt;
+        if (d.x < -8) d.x += cssW + 16;
+        if (d.x > cssW + 8) d.x -= cssW + 16;
+        if (d.y < -8) d.y += cssH + 16;
+        if (d.y > cssH + 8) d.y -= cssH + 16;
+        if (d.z <= 0) {
+          hits.push({ x: d.x, y: d.y, age: 0 });
+          if (hits.length > 28) hits.shift();
+          landed.push(d);
+          recycleDrop(d);
         }
+      }
+      for (let i = hits.length - 1; i >= 0; i--) {
+        hits[i].age += dt;
+        if (hits[i].age > 0.2) hits.splice(i, 1);
       }
       if (!calm && look.rain > 0.03 && water && quality.rainDrips) {
         dripT += dt * look.rain * quality.rainDrips * 2.2;
-        while (dripT >= 1) {
+        while (dripT >= 1 && landed.length) {
           dripT -= 1;
-          water.impulse(Math.random() * 0.92 + 0.04, Math.random() * 0.88 + 0.06, 0.07 + Math.random() * 0.06);
+          const d = landed.pop();
+          water.impulse(d.x / cssW, d.y / cssH, 0.07 + Math.random() * 0.06);
         }
+        if (dripT > 2) dripT = 2;
       } else {
         dripT = 0;
       }
@@ -725,25 +753,46 @@
         ctx.fillRect(0, 0, cssW, cssH);
       }
       if (drops.length) {
+        const cx = cssW * 0.5;
+        const cy = cssH * 0.45;
         ctx.strokeStyle = "rgba(214, 228, 232, 0.78)";
-        ctx.lineWidth = 1.35;
+        ctx.fillStyle = "rgba(220, 232, 236, 0.95)";
+        ctx.lineWidth = 1.15;
         ctx.lineCap = "round";
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
-          ctx.globalAlpha = d.a;
+          const near = clamp(1 - d.z, 0, 1);
+          const ease = near * near;
+          const alpha = d.a * (0.12 + 0.78 * ease);
+          const headR = 0.55 + 1.45 * ease;
+          const tail = 1.6 + 6.2 * ease;
+          const px = d.x - cx;
+          const py = d.y - cy;
+          const plen = Math.hypot(px, py) || 1;
+          const ux = d.driftX * 0.035 + (px / plen) * 0.4 * d.z;
+          const uy = d.driftY * 0.035 + (py / plen) * 0.4 * d.z;
+          ctx.globalAlpha = alpha;
           ctx.beginPath();
-          ctx.moveTo(d.x, d.y);
-          ctx.lineTo(d.x - d.vx * 0.018, d.y - d.len);
+          ctx.moveTo(d.x + ux * tail, d.y + uy * tail);
+          ctx.lineTo(d.x, d.y);
           ctx.stroke();
-        }
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = "rgba(210, 224, 228, 0.28)";
-        for (let i = 0; i < drops.length; i += 3) {
-          const d = drops[i];
           ctx.beginPath();
-          ctx.ellipse(d.x, Math.min(cssH - 4, d.y + 8), 3.2, 1.1, 0, 0, Math.PI * 2);
+          ctx.arc(d.x, d.y, headR, 0, Math.PI * 2);
           ctx.fill();
         }
+        ctx.globalAlpha = 1;
+      }
+      if (hits.length) {
+        for (let i = 0; i < hits.length; i++) {
+          const hit = hits[i];
+          const t = clamp(hit.age / 0.18, 0, 1);
+          ctx.globalAlpha = 0.34 * (1 - t);
+          ctx.fillStyle = "rgba(220, 232, 236, 1)";
+          ctx.beginPath();
+          ctx.arc(hit.x, hit.y, 2.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
       }
     }
 

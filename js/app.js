@@ -73,6 +73,7 @@
   }
 
   let lastQuality = config.state.quality;
+  let lastRainAmt = 0;
 
   function applyWorldSettings() {
     const preset = config.preset();
@@ -148,6 +149,10 @@
     const calm = config.state.reducedMotion;
     const look = climate.tick(dt, target, preset, water, calm) || target;
     const ambient = (calm ? 0.25 : preset.ambientWaves) * look.ambientMul;
+    if (water.setRain) water.setRain(look.rain);
+    const leavingRain = lastRainAmt > 0.18 && look.rain < 0.18;
+    lastRainAmt = look.rain;
+    if (leavingRain && water.ensureBuffer) water.ensureBuffer(pixelW, pixelH);
     water.update(dt);
     world.update(dt, water, preset, look);
     world.render(preset, look);
@@ -161,6 +166,8 @@
       dayness: look.dayness,
       distort: calm ? preset.lifeDistort * 0.35 : preset.lifeDistort,
       life: lifeCanvas,
+      refreshLife: leavingRain,
+      ensureBuffer: look.rain > 0.02 && look.rain < 0.35,
     });
     climate.render(look);
     applyCssGrade(look);

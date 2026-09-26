@@ -34,7 +34,8 @@ void main() {
     if (i >= uImpCount) break;
     vec2 ip = uImp[i].xy;
     float dist = distance(vUv, ip);
-    n += uImp[i].z * exp(-dist * dist * 2200.0);
+    float rad = mix(1200.0, 2200.0, clamp(abs(uImp[i].z) * 1.6, 0.0, 1.0));
+    n += uImp[i].z * exp(-dist * dist * rad);
   }
   n = clamp(n, -1.0, 1.0);
   fragColor = vec4(n * 0.5 + 0.5, 0.0, 0.0, 1.0);
@@ -93,15 +94,32 @@ float caustic(vec2 uv, float t) {
   return pow(max(1.0 - abs(n1 + n2 * 0.85), 0.0), 4.2);
 }
 
+float tapH(vec2 uv) {
+  return texture(uRipple, uv).r;
+}
+
+/* Soften the low-res height field so leftover rain ripples do not read as tiles
+   when lighting/caustics come back during rain→clear. */
+float blurH(vec2 uv) {
+  vec2 t = uRippleTexel;
+  return (
+    tapH(uv) * 2.0 +
+    tapH(uv + vec2(t.x, 0.0)) +
+    tapH(uv - vec2(t.x, 0.0)) +
+    tapH(uv + vec2(0.0, t.y)) +
+    tapH(uv - vec2(0.0, t.y))
+  ) / 6.0;
+}
+
 void main() {
   vec2 uv = vUv;
   float aspect = uResolution.x / max(uResolution.y, 1.0);
 
-  float hL = texture(uRipple, uv - vec2(uRippleTexel.x, 0.0)).r;
-  float hR = texture(uRipple, uv + vec2(uRippleTexel.x, 0.0)).r;
-  float hD = texture(uRipple, uv - vec2(0.0, uRippleTexel.y)).r;
-  float hU = texture(uRipple, uv + vec2(0.0, uRippleTexel.y)).r;
-  float h = texture(uRipple, uv).r * 2.0 - 1.0;
+  float hL = blurH(uv - vec2(uRippleTexel.x, 0.0));
+  float hR = blurH(uv + vec2(uRippleTexel.x, 0.0));
+  float hD = blurH(uv - vec2(0.0, uRippleTexel.y));
+  float hU = blurH(uv + vec2(0.0, uRippleTexel.y));
+  float h = blurH(uv) * 2.0 - 1.0;
 
   float amb = uAmbient * (
     sin(uv.x * 7.2 + uTime * 0.31) * sin(uv.y * 5.1 - uTime * 0.23) * 0.012 +
@@ -383,12 +401,15 @@ void main() {
       next = old;
     }
 
-    function uploadLife(src) {
+    function uploadLife(src, forceAlloc) {
       if (!src || !src.width) return false;
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, lifeTex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
-      if (src.width !== lifeW || src.height !== lifeH) {
+      if (forceAlloc || src.width !== lifeW || src.height !== lifeH) {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
         lifeW = src.width;
         lifeH = src.height;
@@ -396,12 +417,27 @@ void main() {
         gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, src);
       }
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
       return true;
+    }
+
+    function ensureBuffer(pixelW, pixelH) {
+      const dw = gl.drawingBufferWidth;
+      const dh = gl.drawingBufferHeight;
+      if (dw > 0 && dh > 0 && (dw < pixelW * 0.92 || dh < pixelH * 0.92)) {
+        const w = canvas.width;
+        const h = canvas.height;
+        canvas.width = w;
+        canvas.height = h;
+        return true;
+      }
+      return false;
     }
 
     function render(cssW, cssH, pixelW, pixelH, time, opts) {
       opts = opts || {};
-      const hasLife = uploadLife(opts.life);
+      if (opts.ensureBuffer) ensureBuffer(pixelW, pixelH);
+      const hasLife = uploadLife(opts.life, !!opts.refreshLife);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, pixelW, pixelH);
       gl.useProgram(waterProg);
@@ -434,6 +470,7 @@ void main() {
       step,
       render,
       rebuild,
+      ensureBuffer,
       lost: false,
     };
   }
@@ -568,6 +605,8 @@ void main() {
 
     const queue = [];
     let damp = 0.988;
+    let rainAmt = 0;
+    let rainSettle = 0;
 
     return {
       kind: function () {
@@ -583,15 +622,28 @@ void main() {
         damp = nextQuality.ripple >= 400 ? 0.991 : nextQuality.ripple >= 240 ? 0.988 : 0.983;
         if (impl.rebuild) impl.rebuild(nextQuality.ripple);
       },
+      setRain: function (amount) {
+        rainAmt = amount || 0;
+      },
       update: function (dt) {
         while (queue.length) {
           impl.impulse(queue[0], queue[1], queue[2]);
           queue.splice(0, 3);
         }
+        if (rainAmt > 0.04) rainSettle = 2.2;
+        else rainSettle = Math.max(0, rainSettle - dt);
+        let d = damp;
+        if (rainAmt > 0.05) d = Math.min(d, 0.981);
+        if (rainSettle > 0 && rainAmt < 0.4) d = Math.min(d, 0.965);
         if (impl.step) {
-          impl.step(damp);
-          if (dt > 0.028) impl.step(damp);
+          impl.step(d);
+          if (dt > 0.028) impl.step(d);
+          if (rainSettle > 0 && rainAmt < 0.22) impl.step(d);
         }
+      },
+      ensureBuffer: function (pixelW, pixelH) {
+        if (impl.ensureBuffer) return impl.ensureBuffer(pixelW, pixelH);
+        return false;
       },
       render: function (cssW, cssH, pixelW, pixelH, time, opts) {
         impl.render(cssW, cssH, pixelW, pixelH, time, opts);

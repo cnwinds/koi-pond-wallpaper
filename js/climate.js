@@ -712,8 +712,10 @@
         d.z -= d.vz * dt * (0.92 + 0.08 * Math.max(d.z, 0));
         if (d.z <= 0) {
           if (!calm && water) {
+            /* Size changes how hard the ring is pushed, not a drawn drop body.
+               The kernel stays tight so a large drop is not a white disc. */
             const mag = 0.06 + d.size * 0.11;
-            const rad = 1900 - (d.size - 0.68) * 1200;
+            const rad = 7200;
             water.impulse(d.tx / cssW, d.ty / cssH, mag, rad);
           }
           recycleDrop(d, look);
@@ -768,33 +770,35 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssW, cssH);
       if (drops.length) {
-        ctx.fillStyle = "rgba(226, 234, 238, 1)";
+        ctx.lineCap = "butt";
+        ctx.lineJoin = "bevel";
+        ctx.lineWidth = 0.65;
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
           if (d.z < 0.08 || d.z > 0.9) continue;
-          const alt = clamp(d.z, 0, 1);
           const wave = Math.sin(d.phase || 0);
           const fade = wave > 0 ? wave * wave : 0;
           if (fade < 0.45) continue;
-          const foreshort = 0.35 + 0.65 * alt;
           const head = projectDrop(d, d.z);
-          const tail = projectDrop(d, Math.min(1, d.z + 0.22 * d.size));
+          /* Drop size is ripple-only. Streak length and width do not grow with it. */
+          const tail = projectDrop(d, Math.min(1, d.z + 0.2));
           const dx = head.x - tail.x;
           const dy = head.y - tail.y;
           const len = Math.hypot(dx, dy) || 1;
-          if (len < 10) continue;
-          const nx = -dy / len;
-          const ny = dx / len;
-          const tailW = 0.38 * foreshort;
-          const headW = 0.1 * foreshort;
-          ctx.globalAlpha = d.a * fade * (0.1 + 0.16 * alt);
+          if (len < 16) continue;
+          /* Stop short of the water end so the tip cannot rasterize as a dot. */
+          const x1 = tail.x + dx * 0.78;
+          const y1 = tail.y + dy * 0.78;
+          const g = ctx.createLinearGradient(tail.x, tail.y, x1, y1);
+          g.addColorStop(0, "rgba(186, 196, 202, 0.7)");
+          g.addColorStop(0.62, "rgba(186, 196, 202, 0.14)");
+          g.addColorStop(1, "rgba(186, 196, 202, 0)");
+          ctx.strokeStyle = g;
+          ctx.globalAlpha = Math.min(0.16, d.a * fade * 0.2);
           ctx.beginPath();
-          ctx.moveTo(tail.x + nx * tailW, tail.y + ny * tailW);
-          ctx.lineTo(head.x + nx * headW, head.y + ny * headW);
-          ctx.lineTo(head.x - nx * headW, head.y - ny * headW);
-          ctx.lineTo(tail.x - nx * tailW, tail.y - ny * tailW);
-          ctx.closePath();
-          ctx.fill();
+          ctx.moveTo(tail.x, tail.y);
+          ctx.lineTo(x1, y1);
+          ctx.stroke();
         }
         ctx.globalAlpha = 1;
       }

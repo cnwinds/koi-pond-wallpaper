@@ -71,7 +71,10 @@ function staticChecks() {
 
   const csproj = read("win/KoiPondWallpaper/KoiPondWallpaper.csproj");
   assert(!climate.includes("rgba(232, 240, 244"), "hit flashes still draw white dots", failures);
-  assert(csproj.includes("<Version>0.3.9</Version>"), "csproj not bumped to 0.3.9", failures);
+  assert(climate.includes("Drop size is ripple-only"), "streaks still scale with drop size", failures);
+  assert(water.includes("uniform float uRain"), "WATER_FS missing uRain", failures);
+  assert(water.includes("fade that glint"), "rain crests can still shade as white discs", failures);
+  assert(csproj.includes("<Version>0.3.10</Version>"), "csproj not bumped to 0.3.10", failures);
   return failures;
 }
 
@@ -509,6 +512,53 @@ async function runBrowser() {
       console.log("  wx specks", specks);
       if (specks.bright > 40) {
         failures.push("rain: opaque white specks (" + specks.bright + ")");
+      }
+      const blobs = await page.evaluate(() => {
+        const water = document.getElementById("water");
+        const life = document.getElementById("life");
+        const tw = 320;
+        const th = 180;
+        function grab(el) {
+          const c = document.createElement("canvas");
+          c.width = tw;
+          c.height = th;
+          const ctx = c.getContext("2d", { willReadFrequently: true });
+          ctx.drawImage(el, 0, 0, tw, th);
+          return ctx.getImageData(0, 0, tw, th).data;
+        }
+        const wd = grab(water);
+        const ld = life && life.width > 2 ? grab(life) : new Uint8ClampedArray(tw * th * 4);
+        const near = new Uint8Array(tw * th);
+        for (let y = 0; y < th; y++) {
+          for (let x = 0; x < tw; x++) {
+            if (ld[(y * tw + x) * 4 + 3] <= 40) continue;
+            for (let oy = -6; oy <= 6; oy++) {
+              for (let ox = -6; ox <= 6; ox++) {
+                const xx = x + ox;
+                const yy = y + oy;
+                if (xx < 0 || yy < 0 || xx >= tw || yy >= th) continue;
+                near[yy * tw + xx] = 1;
+              }
+            }
+          }
+        }
+        let bright = 0;
+        let far = 0;
+        for (let i = 0; i < tw * th; i++) {
+          if (near[i]) continue;
+          const r = wd[i * 4];
+          const g = wd[i * 4 + 1];
+          const b = wd[i * 4 + 2];
+          if (r > 190 && g > 185 && b > 170 && Math.abs(r - g) < 30 && Math.abs(g - b) < 40) {
+            bright++;
+            far++;
+          }
+        }
+        return { bright: bright, far: far };
+      });
+      console.log("  open-water white blobs", blobs);
+      if (blobs.far > 40) {
+        failures.push("rain: white drop pixels away from fish (" + blobs.far + ")");
       }
     }
     await drive(page, 0.35);

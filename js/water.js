@@ -70,6 +70,7 @@ uniform float uDayness;
 uniform float uDistort;
 uniform float uHasLife;
 uniform float uRippleCalm;
+uniform float uRain;
 
 vec2 hash22(vec2 p) {
   p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
@@ -169,8 +170,16 @@ void main() {
   vec3 L = normalize(mix(vec3(0.2, 0.15, 0.9), vec3(-0.35, 0.48, 0.8), uDayness));
   vec3 H = normalize(L + vec3(0.0, 0.0, 1.0));
   float spec = pow(max(dot(n, H), 0.0), 72.0);
+  /* A large drop's crest is flat and faces the light, so it reads as a white
+     disc. While rain is up, fade that glint off — including the smaller ring
+     around a tight landing. The ring stays in the normals. */
+  float crest = smoothstep(0.04, 0.14, abs(h));
+  float rainW = smoothstep(0.12, 0.45, uRain);
+  spec *= mix(1.0, 0.05, rainW);
+  spec *= 1.0 - crest * rainW;
   water += mix(vec3(0.45, 0.62, 1.0), vec3(0.72, 0.86, 0.8), uDayness) * spec * 0.52 * (0.18 + 0.82 * max(uCausticGain, 1.0 - uDayness));
-  water += vec3(0.55, 0.7, 0.8) * smoothstep(0.05, 0.24, abs(h)) * 0.2;
+  float crestLift = mix(0.2, 0.012, rainW);
+  water += vec3(0.55, 0.7, 0.8) * smoothstep(0.05, 0.24, abs(h)) * crestLift;
 
   float edge = smoothstep(0.46, 0.72, max(abs(uv.x - 0.5), abs(uv.y - 0.5)));
   water = mix(water, mix(vec3(0.01, 0.02, 0.05), vec3(0.045, 0.07, 0.05), uDayness), edge * 0.42);
@@ -344,6 +353,7 @@ void main() {
       uDistort: gl.getUniformLocation(waterProg, "uDistort"),
       uHasLife: gl.getUniformLocation(waterProg, "uHasLife"),
       uRippleCalm: gl.getUniformLocation(waterProg, "uRippleCalm"),
+      uRain: gl.getUniformLocation(waterProg, "uRain"),
     };
 
     let lifeTex = gl.createTexture();
@@ -498,6 +508,7 @@ void main() {
       gl.uniform1f(water.uDistort, opts.distort != null ? opts.distort : 0.04);
       gl.uniform1f(water.uHasLife, hasLife ? 1 : 0);
       gl.uniform1f(water.uRippleCalm, opts.rippleCalm != null ? opts.rippleCalm : 0);
+      gl.uniform1f(water.uRain, opts.rain != null ? opts.rain : 0);
       drawQuad(waterProg);
     }
 

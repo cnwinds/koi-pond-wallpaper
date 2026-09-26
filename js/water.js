@@ -20,6 +20,7 @@ uniform sampler2D uPrev;
 uniform vec2 uTexel;
 uniform float uDamp;
 uniform vec3 uImp[8];
+uniform float uImpRad[8];
 uniform int uImpCount;
 
 void main() {
@@ -34,7 +35,7 @@ void main() {
     if (i >= uImpCount) break;
     vec2 ip = uImp[i].xy;
     float dist = distance(vUv, ip);
-    float rad = mix(1200.0, 2200.0, clamp(abs(uImp[i].z) * 1.6, 0.0, 1.0));
+    float rad = uImpRad[i] > 1.0 ? uImpRad[i] : 2200.0;
     n += uImp[i].z * exp(-dist * dist * rad);
   }
   n = clamp(n, -1.0, 1.0);
@@ -297,6 +298,7 @@ void main() {
       uTexel: gl.getUniformLocation(simProg, "uTexel"),
       uDamp: gl.getUniformLocation(simProg, "uDamp"),
       uImp: gl.getUniformLocation(simProg, "uImp"),
+      uImpRad: gl.getUniformLocation(simProg, "uImpRad"),
       uImpCount: gl.getUniformLocation(simProg, "uImpCount"),
     };
     const water = {
@@ -365,20 +367,23 @@ void main() {
 
     const impulses = [];
     const impData = new Float32Array(24);
+    const impRad = new Float32Array(8);
 
-    function impulse(nx, ny, strength) {
-      impulses.push(nx, ny, strength);
+    function impulse(nx, ny, strength, radius) {
+      impulses.push(nx, ny, strength, radius != null ? radius : 0);
     }
 
     function step(damp) {
-      const count = Math.min(8, (impulses.length / 3) | 0);
+      const count = Math.min(8, (impulses.length / 4) | 0);
       impData.fill(0);
+      impRad.fill(0);
       for (let i = 0; i < count; i++) {
-        impData[i * 3] = impulses[i * 3];
-        impData[i * 3 + 1] = 1 - impulses[i * 3 + 1];
-        impData[i * 3 + 2] = impulses[i * 3 + 2];
+        impData[i * 3] = impulses[i * 4];
+        impData[i * 3 + 1] = 1 - impulses[i * 4 + 1];
+        impData[i * 3 + 2] = impulses[i * 4 + 2];
+        impRad[i] = impulses[i * 4 + 3];
       }
-      if (count) impulses.splice(0, count * 3);
+      if (count) impulses.splice(0, count * 4);
 
       gl.bindFramebuffer(gl.FRAMEBUFFER, next.fb);
       gl.viewport(0, 0, simW, simH);
@@ -392,6 +397,7 @@ void main() {
       gl.uniform2f(sim.uTexel, 1 / simW, 1 / simH);
       gl.uniform1f(sim.uDamp, damp);
       gl.uniform3fv(sim.uImp, impData);
+      gl.uniform1fv(sim.uImpRad, impRad);
       gl.uniform1i(sim.uImpCount, count);
       drawQuad(simProg);
 
@@ -421,17 +427,18 @@ void main() {
       return true;
     }
 
-    function ensureBuffer(pixelW, pixelH) {
+    function bufferMismatch(pixelW, pixelH) {
       const dw = gl.drawingBufferWidth;
       const dh = gl.drawingBufferHeight;
-      if (dw > 0 && dh > 0 && (dw < pixelW * 0.92 || dh < pixelH * 0.92)) {
-        const w = canvas.width;
-        const h = canvas.height;
-        canvas.width = w;
-        canvas.height = h;
-        return true;
-      }
-      return false;
+      if (dw <= 0 || dh <= 0) return false;
+      return dw < pixelW * 0.98 || dh < pixelH * 0.98 || canvas.width !== pixelW || canvas.height !== pixelH;
+    }
+
+    function ensureBuffer(pixelW, pixelH) {
+      if (!bufferMismatch(pixelW, pixelH)) return false;
+      canvas.width = Math.max(1, pixelW);
+      canvas.height = Math.max(1, pixelH);
+      return true;
     }
 
     function render(cssW, cssH, pixelW, pixelH, time, opts) {
@@ -471,6 +478,7 @@ void main() {
       render,
       rebuild,
       ensureBuffer,
+      bufferMismatch,
       lost: false,
     };
   }
@@ -615,8 +623,8 @@ void main() {
       compositesLife: function () {
         return !!impl.compositesLife;
       },
-      impulse: function (nx, ny, strength) {
-        queue.push(nx, ny, strength);
+      impulse: function (nx, ny, strength, radius) {
+        queue.push(nx, ny, strength, radius != null ? radius : 0);
       },
       setQuality: function (nextQuality) {
         damp = nextQuality.ripple >= 400 ? 0.991 : nextQuality.ripple >= 240 ? 0.988 : 0.983;
@@ -627,8 +635,8 @@ void main() {
       },
       update: function (dt) {
         while (queue.length) {
-          impl.impulse(queue[0], queue[1], queue[2]);
-          queue.splice(0, 3);
+          impl.impulse(queue[0], queue[1], queue[2], queue[3]);
+          queue.splice(0, 4);
         }
         if (rainAmt > 0.04) rainSettle = 2.2;
         else rainSettle = Math.max(0, rainSettle - dt);
@@ -643,6 +651,10 @@ void main() {
       },
       ensureBuffer: function (pixelW, pixelH) {
         if (impl.ensureBuffer) return impl.ensureBuffer(pixelW, pixelH);
+        return false;
+      },
+      bufferMismatch: function (pixelW, pixelH) {
+        if (impl.bufferMismatch) return impl.bufferMismatch(pixelW, pixelH);
         return false;
       },
       render: function (cssW, cssH, pixelW, pixelH, time, opts) {

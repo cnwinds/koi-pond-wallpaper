@@ -31,7 +31,7 @@
   }
 
   function create(canvas, options) {
-    const ctx = canvas.getContext("2d", { alpha: true, desynchronized: true });
+    const ctx = canvas.getContext("2d", { alpha: true, desynchronized: false });
     const sprites = options.sprites;
     const rng = PondSprites.mulberry32(90210);
 

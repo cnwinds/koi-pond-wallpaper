@@ -388,7 +388,6 @@
     let dpr = 1;
     let dripT = 0;
     const drops = [];
-    const hits = [];
     const listeners = [];
     let blend = null;
     let rampTau = options.rampSec != null ? clamp(+options.rampSec, 0.25, 20) / 2.8 : RAMP_SEC / 2.8;
@@ -636,7 +635,7 @@
       cssH = h;
       dpr = pixelRatio;
       if (!canvas) return;
-      if (!drops.length && !hits.length) {
+      if (!drops.length) {
         releaseOverlay();
         return;
       }
@@ -707,14 +706,11 @@
       const want = calm || rainAmt < 0.05 ? 0 : Math.round((quality.rainStreaks || 0) * rainAmt);
       while (drops.length < want) drops.push(spawnDrop(true, look));
       while (drops.length > want) drops.pop();
-      if (want === 0) hits.length = 0;
       for (let i = 0; i < drops.length; i++) {
         const d = drops[i];
         d.phase += dt * (d.flickerHz || 1.2);
         d.z -= d.vz * dt * (0.78 + 0.22 * Math.max(d.z, 0));
         if (d.z <= 0) {
-          hits.push({ x: d.tx, y: d.ty, age: 0, size: d.size });
-          if (hits.length > 36) hits.shift();
           if (!calm && water) {
             const mag = 0.06 + d.size * 0.11;
             const rad = 1900 - (d.size - 0.68) * 1200;
@@ -722,10 +718,6 @@
           }
           recycleDrop(d, look);
         }
-      }
-      for (let i = hits.length - 1; i >= 0; i--) {
-        hits[i].age += dt;
-        if (hits[i].age > 0.28) hits.splice(i, 1);
       }
       dripT = 0;
       return look;
@@ -738,7 +730,7 @@
     }
 
     function overlayBusy() {
-      return drops.length + hits.length;
+      return drops.length;
     }
 
     function releaseOverlay() {
@@ -765,11 +757,10 @@
 
     function render(look) {
       if (!ctx) return;
-      /* Rain hits only. Night/dusk/haze live in the water shader so a
-         stale full-screen 2D surface cannot mosaic the pond as weather
-         intensity drops toward clear. */
+      /* Airborne streaks only. Impacts are ripples in the water sim —
+         a white hit dot reads as a hail of specks. Night/dusk/haze stay
+         in the water shader so this canvas cannot mosaic the pond. */
       if (!drops.length) {
-        hits.length = 0;
         releaseOverlay();
         return;
       }
@@ -780,41 +771,29 @@
         ctx.fillStyle = "rgba(226, 234, 238, 1)";
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
-          if (d.z < 0.06 || d.z > 0.92) continue;
+          if (d.z < 0.08 || d.z > 0.9) continue;
           const alt = clamp(d.z, 0, 1);
           const wave = Math.sin(d.phase || 0);
           const fade = wave > 0 ? wave * wave : 0;
-          if (fade < 0.04) continue;
-          const foreshort = 0.28 + 0.72 * alt;
+          if (fade < 0.45) continue;
+          const foreshort = 0.35 + 0.65 * alt;
           const head = projectDrop(d, d.z);
-          const tail = projectDrop(d, Math.min(1, d.z + 0.08 * d.size));
+          const tail = projectDrop(d, Math.min(1, d.z + 0.22 * d.size));
           const dx = head.x - tail.x;
           const dy = head.y - tail.y;
           const len = Math.hypot(dx, dy) || 1;
+          if (len < 10) continue;
           const nx = -dy / len;
           const ny = dx / len;
-          const tailW = (0.7 + 0.45 * d.size) * foreshort;
-          const headW = (0.12 + 0.14 * d.size) * (0.35 + 0.55 * alt);
-          ctx.globalAlpha = d.a * fade * (0.16 + 0.34 * alt);
+          const tailW = 0.38 * foreshort;
+          const headW = 0.1 * foreshort;
+          ctx.globalAlpha = d.a * fade * (0.1 + 0.16 * alt);
           ctx.beginPath();
           ctx.moveTo(tail.x + nx * tailW, tail.y + ny * tailW);
           ctx.lineTo(head.x + nx * headW, head.y + ny * headW);
           ctx.lineTo(head.x - nx * headW, head.y - ny * headW);
           ctx.lineTo(tail.x - nx * tailW, tail.y - ny * tailW);
           ctx.closePath();
-          ctx.fill();
-        }
-        ctx.globalAlpha = 1;
-      }
-      if (hits.length) {
-        for (let i = 0; i < hits.length; i++) {
-          const hit = hits[i];
-          const t = clamp(hit.age / 0.28, 0, 1);
-          const sz = hit.size || 1;
-          ctx.globalAlpha = 0.42 * (1 - t);
-          ctx.fillStyle = "rgba(232, 240, 244, 1)";
-          ctx.beginPath();
-          ctx.arc(hit.x, hit.y, 1.4 + sz * 1.1 * (1 - t * 0.35), 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.globalAlpha = 1;

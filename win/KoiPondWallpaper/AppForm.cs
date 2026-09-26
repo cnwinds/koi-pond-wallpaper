@@ -43,6 +43,20 @@ internal sealed class AppForm : Form
         };
         var menu = new ContextMenuStrip();
         menu.Items.Add("投喂 / Feed", null, async (_, _) => await FeedAsync());
+        menu.Items.Add("显示设置 / Show settings", null, async (_, _) => await PreviewAsync("{ui:true}"));
+        var timeMenu = new ToolStripMenuItem("天色预览 / Light");
+        timeMenu.DropDownItems.Add("自动（真实时钟） / Auto", null, async (_, _) => await PreviewAsync("{time:null}"));
+        timeMenu.DropDownItems.Add("昼 / Day", null, async (_, _) => await PreviewAsync("{time:'day'}"));
+        timeMenu.DropDownItems.Add("黄昏 / Dusk", null, async (_, _) => await PreviewAsync("{time:'dusk'}"));
+        timeMenu.DropDownItems.Add("夜 / Night", null, async (_, _) => await PreviewAsync("{time:'night'}"));
+        menu.Items.Add(timeMenu);
+        var weatherMenu = new ToolStripMenuItem("天气预览 / Weather");
+        weatherMenu.DropDownItems.Add("自动（实时天气） / Auto", null, async (_, _) => await PreviewAsync("{sky:null}"));
+        weatherMenu.DropDownItems.Add("晴 / Clear", null, async (_, _) => await PreviewAsync("{sky:'clear'}"));
+        weatherMenu.DropDownItems.Add("阴 / Cloudy", null, async (_, _) => await PreviewAsync("{sky:'cloudy'}"));
+        weatherMenu.DropDownItems.Add("雨 / Rain", null, async (_, _) => await PreviewAsync("{sky:'rain'}"));
+        weatherMenu.DropDownItems.Add("雾 / Fog", null, async (_, _) => await PreviewAsync("{sky:'fog'}"));
+        menu.Items.Add(weatherMenu);
         menu.Items.Add("重新贴到桌面 / Pin desktop", null, async (_, _) => await AttachWallpaperAsync());
         menu.Items.Add("用 Lively 设壁纸 / Lively", null, (_, _) => UseLivelyOrExplain());
         menu.Items.Add(new ToolStripSeparator());
@@ -188,8 +202,9 @@ internal sealed class AppForm : Form
             "pond.local",
             _webRoot,
             CoreWebView2HostResourceAccessKind.Allow);
-        var query = _mode == LaunchMode.Window ? "" : "?ui=0";
-        _web.CoreWebView2.Navigate("https://pond.local/index.html" + query);
+        // Keep the hideable gear so day/night and weather can be previewed
+        // on the wallpaper. ?ui=0 would persist a hidden HUD in localStorage.
+        _web.CoreWebView2.Navigate("https://pond.local/index.html");
     }
 
     async Task<bool> AttachWallpaperAsync()
@@ -262,6 +277,13 @@ internal sealed class AppForm : Form
         if (_web.CoreWebView2 == null) return;
         await _web.CoreWebView2.ExecuteScriptAsync(
             "if(window.KoiPond)KoiPond.feed(window.innerWidth*0.5,window.innerHeight*0.42);");
+    }
+
+    async Task PreviewAsync(string jsObject)
+    {
+        if (_web.CoreWebView2 == null) return;
+        await _web.CoreWebView2.ExecuteScriptAsync(
+            "if(window.KoiPond)KoiPond.preview(" + jsObject + ");");
     }
 
     void ExitApp()

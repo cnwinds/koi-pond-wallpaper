@@ -160,7 +160,7 @@ void main() {
   water = mix(water, vec3(0.62, 0.7, 0.72) * uExposure, clamp(uHaze, 0.0, 0.75));
 
   if (uHasLife > 0.5) {
-    vec2 warp = n.xy * uDistort + vec2(h, -h) * uDistort * 0.55;
+    vec2 warp = n.xy * uDistort + vec2(h, -h) * uDistort * 0.28;
     vec2 lifeUv = uv + warp;
     vec4 lifeC = texture(uLife, lifeUv);
     vec3 sunT = vec3(1.03, 1.01, 0.97);
@@ -168,8 +168,8 @@ void main() {
     vec3 lightT = mix(moonT, sunT, uDayness);
     float lightE = mix(0.62, 1.0, uDayness);
     vec3 lit = lifeC.rgb * lightT * lightE;
-    lit += vec3(0.42, 0.58, 0.36) * (cau * 0.28 + cau2 * 0.14) * uCausticGain;
-    lit *= 1.0 + h * 0.38;
+    lit += vec3(0.42, 0.58, 0.36) * (cau * 0.14 + cau2 * 0.07) * uCausticGain;
+    lit *= 1.0 + h * 0.18;
     lit = mix(lit, vec3(0.7, 0.78, 0.8) * uExposure, clamp(uHaze * 0.45, 0.0, 0.4));
     water = mix(water, lit, clamp(lifeC.a, 0.0, 1.0));
   }
@@ -512,12 +512,12 @@ void main() {
           for (let i = 0; i < bands; i++) {
             const y = i * bh;
             const ny = (i + 0.5) / bands;
-            let ox = Math.sin(ny * 16 + t * 1.5) * distort * 160;
+            let ox = Math.sin(ny * 16 + t * 1.5) * distort * 80;
             for (let r = 0; r < rings.length; r++) {
               const ring = rings[r];
               const dy = ny - ring.y;
               const fall = Math.exp(-dy * dy * 28);
-              ox += Math.sin(ring.r * 0.07) * ring.a * 70 * fall;
+              ox += Math.sin(ring.r * 0.07) * ring.a * 32 * fall;
             }
             ctx.drawImage(opts.life, 0, (y / cssH) * opts.life.height, opts.life.width, (bh / cssH) * opts.life.height + 1.5, ox, y, cssW, bh + 0.8);
           }

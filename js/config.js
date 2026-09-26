@@ -15,7 +15,7 @@
       spineSlices: 16,
       rainStreaks: 0,
       rainDrips: 0.35,
-      lifeDistort: 0.05,
+      lifeDistort: 0.022,
       power: "low-power",
     },
     mid: {
@@ -29,7 +29,7 @@
       spineSlices: 24,
       rainStreaks: 72,
       rainDrips: 1.6,
-      lifeDistort: 0.08,
+      lifeDistort: 0.038,
       power: "low-power",
     },
     high: {
@@ -43,7 +43,7 @@
       spineSlices: 32,
       rainStreaks: 130,
       rainDrips: 2.4,
-      lifeDistort: 0.1,
+      lifeDistort: 0.048,
       power: "default",
     },
   };
@@ -187,6 +187,9 @@
     state.quality = parseQuality(state.quality) || "mid";
     state.fps = clamp(state.fps | 0, 8, 60);
     state.ui = !!state.ui;
+    if (!new URLSearchParams(global.location.search || "").has("ui")) {
+      state.ui = true;
+    }
     state.demo = !!state.demo;
     state.lat = parseCoord(state.lat, -90, 90);
     if (state.lat == null) state.lat = defaults.lat;

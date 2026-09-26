@@ -137,136 +137,129 @@ async function loadPuppeteer() {
   }
 }
 
-function blockinessFromRgba(data, w, h) {
-  const luma = new Float32Array(w * h);
-  let sum = 0;
-  for (let i = 0; i < w * h; i++) {
-    const y = data[i * 4] * 0.299 + data[i * 4 + 1] * 0.587 + data[i * 4 + 2] * 0.114;
-    luma[i] = y;
-    sum += y;
-  }
-  const mean = sum / (w * h);
-  const x0 = Math.floor(w * 0.2);
-  const x1 = Math.floor(w * 0.8);
-  const y0 = Math.floor(h * 0.22);
-  const y1 = Math.floor(h * 0.78);
-
-  function scoreFor(bs) {
-    const bw = Math.max(1, Math.floor((x1 - x0) / bs));
-    const bh = Math.max(1, Math.floor((y1 - y0) / bs));
-    const means = new Float32Array(bw * bh);
-    let intra = 0;
-    let nI = 0;
-    for (let by = 0; by < bh; by++) {
-      for (let bx = 0; bx < bw; bx++) {
-        let s = 0;
-        let s2 = 0;
-        let n = 0;
-        for (let y = 0; y < bs; y++) {
-          const row = y0 + by * bs + y;
-          for (let x = 0; x < bs; x++) {
-            const v = luma[row * w + (x0 + bx * bs + x)];
-            s += v;
-            s2 += v * v;
-            n++;
-          }
-        }
-        const m = s / n;
-        means[by * bw + bx] = m;
-        intra += Math.sqrt(Math.max(0, s2 / n - m * m));
-        nI++;
-      }
-    }
-    let inter = 0;
-    let nE = 0;
-    for (let by = 0; by < bh; by++) {
-      for (let bx = 0; bx < bw; bx++) {
-        const i = by * bw + bx;
-        if (bx + 1 < bw) {
-          inter += Math.abs(means[i] - means[i + 1]);
-          nE++;
-        }
-        if (by + 1 < bh) {
-          inter += Math.abs(means[i] - means[i + bw]);
-          nE++;
-        }
-      }
-    }
-    const intraM = intra / Math.max(1, nI);
-    const interM = inter / Math.max(1, nE);
-    return { intra: intraM, inter: interM, ratio: interM / (intraM + 1e-3) };
-  }
-
-  function horizLag(lag) {
-    let num = 0;
-    let den = 0;
-    for (let y = y0; y < y1; y += 3) {
-      for (let x = x0; x < x1 - lag; x += 2) {
-        const a = luma[y * w + x] - luma[y * w + x + 1];
-        const b = luma[y * w + x + lag] - luma[y * w + x + lag + 1];
-        num += a * b;
-        den += a * a;
-      }
-    }
-    return den > 1e-6 ? num / den : 0;
-  }
-
-  const lags = [4, 5, 6, 8, 10, 16, 20, 32];
-  const ac = {};
-  const vals = [];
-  for (const lag of lags) {
-    ac[lag] = horizLag(lag);
-    vals.push(ac[lag]);
-  }
-  const sorted = vals.slice().sort((a, b) => a - b);
-  const med = sorted[(sorted.length / 2) | 0];
-  const peak = Math.max.apply(null, vals);
-  const periodic = peak - med;
-  const s8 = scoreFor(8);
-  const s16 = scoreFor(16);
-  const tileLike = (s8.ratio > 3.1 && s8.intra < 5.5) || (s16.ratio > 2.8 && s16.intra < 7);
-  const gridLike = periodic > 0.62 && peak > 0.55;
-  return {
-    mean,
-    s8,
-    s16,
-    ac,
-    periodic,
-    blocky: mean > 12 && (tileLike || gridLike),
-  };
-}
-
-async function capturePixels(page) {
+async function captureFrame(page, file) {
+  await page.screenshot({ path: file, type: "png" });
   return page.evaluate(() => {
     const water = document.getElementById("water");
     const wx = document.getElementById("wx");
+    const tw = 480;
+    const th = 270;
     const tmp = document.createElement("canvas");
-    tmp.width = water.width;
-    tmp.height = water.height;
+    tmp.width = tw;
+    tmp.height = th;
     const ctx = tmp.getContext("2d");
-    ctx.drawImage(water, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(water, 0, 0, tw, th);
     if (wx && wx.width > 2 && wx.height > 2 && !wx.classList.contains("is-idle")) {
-      ctx.drawImage(wx, 0, 0, tmp.width, tmp.height);
+      ctx.drawImage(wx, 0, 0, tw, th);
     }
-    const img = ctx.getImageData(0, 0, tmp.width, tmp.height);
+    const img = ctx.getImageData(0, 0, tw, th);
+    const data = img.data;
+    const w = tw;
+    const h = th;
+    const luma = new Float32Array(w * h);
+    let sum = 0;
+    for (let i = 0; i < w * h; i++) {
+      const y = data[i * 4] * 0.299 + data[i * 4 + 1] * 0.587 + data[i * 4 + 2] * 0.114;
+      luma[i] = y;
+      sum += y;
+    }
+    const mean = sum / (w * h);
+    const x0 = Math.floor(w * 0.2);
+    const x1 = Math.floor(w * 0.8);
+    const y0 = Math.floor(h * 0.22);
+    const y1 = Math.floor(h * 0.78);
+    function scoreFor(bs) {
+      const bw = Math.max(1, Math.floor((x1 - x0) / bs));
+      const bh = Math.max(1, Math.floor((y1 - y0) / bs));
+      const means = new Float32Array(bw * bh);
+      let intra = 0;
+      let nI = 0;
+      for (let by = 0; by < bh; by++) {
+        for (let bx = 0; bx < bw; bx++) {
+          let s = 0;
+          let s2 = 0;
+          let n = 0;
+          for (let y = 0; y < bs; y++) {
+            const row = y0 + by * bs + y;
+            for (let x = 0; x < bs; x++) {
+              const v = luma[row * w + (x0 + bx * bs + x)];
+              s += v;
+              s2 += v * v;
+              n++;
+            }
+          }
+          const m = s / n;
+          means[by * bw + bx] = m;
+          intra += Math.sqrt(Math.max(0, s2 / n - m * m));
+          nI++;
+        }
+      }
+      let inter = 0;
+      let nE = 0;
+      for (let by = 0; by < bh; by++) {
+        for (let bx = 0; bx < bw; bx++) {
+          const i = by * bw + bx;
+          if (bx + 1 < bw) {
+            inter += Math.abs(means[i] - means[i + 1]);
+            nE++;
+          }
+          if (by + 1 < bh) {
+            inter += Math.abs(means[i] - means[i + bw]);
+            nE++;
+          }
+        }
+      }
+      const intraM = intra / Math.max(1, nI);
+      const interM = inter / Math.max(1, nE);
+      return { intra: intraM, inter: interM, ratio: interM / (intraM + 1e-3) };
+    }
+    function horizLag(lag) {
+      let num = 0;
+      let den = 0;
+      for (let y = y0; y < y1; y += 2) {
+        for (let x = x0; x < x1 - lag; x += 2) {
+          const a = luma[y * w + x] - luma[y * w + x + 1];
+          const b = luma[y * w + x + lag] - luma[y * w + x + lag + 1];
+          num += a * b;
+          den += a * a;
+        }
+      }
+      return den > 1e-6 ? num / den : 0;
+    }
+    const lags = [4, 5, 6, 8, 10, 16, 20, 32];
+    const ac = {};
+    const vals = [];
+    for (let i = 0; i < lags.length; i++) {
+      ac[lags[i]] = horizLag(lags[i]);
+      vals.push(ac[lags[i]]);
+    }
+    vals.sort((a, b) => a - b);
+    const med = vals[(vals.length / 2) | 0];
+    let peak = ac[4];
+    for (let i = 0; i < lags.length; i++) if (ac[lags[i]] > peak) peak = ac[lags[i]];
+    const periodic = peak - med;
+    const s8 = scoreFor(8);
+    const s16 = scoreFor(16);
+    const tileLike = (s8.ratio > 3.1 && s8.intra < 5.5) || (s16.ratio > 2.8 && s16.intra < 7);
+    const gridLike = periodic > 0.62 && peak > 0.55;
     return {
-      w: tmp.width,
-      h: tmp.height,
-      data: Array.from(img.data),
-      png: tmp.toDataURL("image/png"),
       snap: window.KoiPond && KoiPond.snapshot ? KoiPond.snapshot() : null,
+      metrics: {
+        mean,
+        s8,
+        s16,
+        ac,
+        periodic,
+        blocky: mean > 12 && (tileLike || gridLike),
+      },
     };
   });
 }
 
-function writePngDataUrl(file, dataUrl) {
-  const b64 = dataUrl.split(",")[1];
-  fs.writeFileSync(file, Buffer.from(b64, "base64"));
-}
-
 async function drive(page, seconds) {
   await page.evaluate((sec) => {
-    const dt = 1 / 30;
+    const dt = 0.05;
     const n = Math.max(1, Math.round(sec / dt));
     for (let i = 0; i < n; i++) KoiPond.drawFrame(dt);
   }, seconds);
@@ -294,11 +287,13 @@ async function runBrowser() {
     return failures;
   }
   const server = await startServer();
-  const browser = await puppeteer.default.launch({
+  const launcher = puppeteer.default && puppeteer.default.launch ? puppeteer.default : puppeteer;
+  const browser = await launcher.launch({
     executablePath: exe,
     headless: "new",
     args: [
       "--no-sandbox",
+      "--disable-dev-shm-usage",
       "--disable-gpu-sandbox",
       "--use-gl=angle",
       "--use-angle=swiftshader",
@@ -307,16 +302,19 @@ async function runBrowser() {
     ],
   });
   const page = await browser.newPage();
+  page.setDefaultTimeout(45000);
   await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
   const url =
     "http://127.0.0.1:" +
     port +
     "/index.html?quality=mid&time=day&weather=cloudy&ui=0&fps=30&place=manual";
-  await page.goto(url, { waitUntil: "networkidle0", timeout: 30000 });
+  console.log("goto", url);
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
   await page.waitForFunction(() => window.KoiPond && KoiPond.drawFrame && KoiPond.climate, { timeout: 15000 });
   await page.evaluate(() => {
     document.documentElement.style.background = "#0a221e";
     document.body.style.background = "#0a221e";
+    if (KoiPond.hold) KoiPond.hold(true);
   });
 
   const paths = [
@@ -327,23 +325,24 @@ async function runBrowser() {
   const report = [];
 
   for (const step of paths) {
+    console.log("path", step.label + "→clear");
     await snapSky(page, step.from);
-    await drive(page, 0.8);
+    await drive(page, 0.35);
     await page.evaluate(() => KoiPond.preview({ sky: "clear", time: "day", ui: 0 }));
     await drive(page, 1.55);
-    const mid = await capturePixels(page);
-    const midMetrics = blockinessFromRgba(Uint8ClampedArray.from(mid.data), mid.w, mid.h);
     const midFile = path.join(outDir, step.label + "-to-clear-mid.png");
-    writePngDataUrl(midFile, mid.png);
-    await drive(page, 5.2);
-    const after = await capturePixels(page);
-    const afterMetrics = blockinessFromRgba(Uint8ClampedArray.from(after.data), after.w, after.h);
+    const mid = await captureFrame(page, midFile);
+    console.log("  mid haze/rain/fog", mid.snap && mid.snap.look && mid.snap.look.haze, mid.snap && mid.snap.look && mid.snap.look.rain, mid.snap && mid.snap.look && mid.snap.look.fog);
+    await drive(page, 4.4);
     const afterFile = path.join(outDir, step.label + "-to-clear-after.png");
-    writePngDataUrl(afterFile, after.png);
+    const after = await captureFrame(page, afterFile);
+    console.log("  after haze/rain", after.snap && after.snap.look && after.snap.look.haze, after.snap && after.snap.look && after.snap.look.rain, "wx", after.snap && after.snap.wx);
 
     const midLook = mid.snap && mid.snap.look;
     const afterLook = after.snap && after.snap.look;
     const afterWx = after.snap && after.snap.wx;
+    const midMetrics = mid.metrics;
+    const afterMetrics = after.metrics;
     const row = {
       path: step.label + "→clear",
       midFile,
@@ -374,7 +373,9 @@ async function runBrowser() {
   }
 
   fs.writeFileSync(path.join(outDir, "report.json"), JSON.stringify(report, null, 2));
-  await browser.close();
+  try {
+    await browser.close();
+  } catch (err) {}
   server.close();
   return failures;
 }

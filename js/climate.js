@@ -749,12 +749,14 @@
       canvas.style.visibility = "visible";
     }
 
-    function render(_look) {
+    function render(look) {
       if (!ctx) return;
       /* Rain hits only. Night/dusk/haze live in the water shader so a
          stale full-screen 2D surface cannot mosaic the pond as weather
          intensity drops toward clear. */
-      if (!drops.length && !hits.length) {
+      const raining = drops.length > 0 || (look && look.rain > 0.04);
+      if (!raining) {
+        hits.length = 0;
         releaseOverlay();
         return;
       }

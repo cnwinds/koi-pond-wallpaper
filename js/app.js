@@ -46,6 +46,7 @@
   let running = false;
   let hiddenPause = false;
   let livelyPause = false;
+  let harnessHold = false;
   let blurFps = null;
   let raf = 0;
   let last = 0;
@@ -220,7 +221,7 @@
 
   function loop(now) {
     raf = requestAnimationFrame(loop);
-    if (hiddenPause || livelyPause) return;
+    if (hiddenPause || livelyPause || harnessHold) return;
     if (!last) last = now;
     const raw = Math.min(0.05, (now - last) / 1000);
     last = now;
@@ -524,6 +525,10 @@
     preview: preview,
     openSettings: openSettings,
     applyHostCommand: applyHostCommand,
+    hold: function (on) {
+      harnessHold = !!on;
+      last = 0;
+    },
     drawFrame: drawFrame,
     snapshot: function () {
       const look = climate.display ? climate.display() : null;

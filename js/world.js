@@ -406,9 +406,11 @@
 
         resolveIK(f);
 
-        if (water && f.rippleT <= 0 && f.mode === "swim" && f.speed > 26) {
-          water.impulse(f.x / cssW, f.y / cssH, 0.16);
-          f.rippleT = 1.2 + rng() * 1.4;
+        // Casual cruise / idle stays quiet. Visible wakes are for feeding
+        // (seek) and for feed-click / eat splash (0.9 / 0.28 above).
+        if (water && seeking && f.rippleT <= 0 && f.speed > 40) {
+          water.impulse(f.x / cssW, f.y / cssH, 0.12);
+          f.rippleT = 0.85 + rng() * 0.7;
         }
       }
 

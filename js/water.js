@@ -171,13 +171,14 @@ void main() {
   vec3 H = normalize(L + vec3(0.0, 0.0, 1.0));
   float spec = pow(max(dot(n, H), 0.0), 72.0);
   /* A large drop's crest is flat and faces the light, so it reads as a white
-     disc. While rain is up, fade that glint off with crest height. The ring
-     stays in the normals. */
-  float crest = smoothstep(0.055, 0.16, abs(h));
-  float rainW = smoothstep(0.15, 0.55, uRain);
-  spec *= 1.0 - crest * 0.97 * rainW;
+     disc. While rain is up, fade that glint off — including the smaller ring
+     around a tight landing. The ring stays in the normals. */
+  float crest = smoothstep(0.04, 0.14, abs(h));
+  float rainW = smoothstep(0.12, 0.45, uRain);
+  spec *= mix(1.0, 0.05, rainW);
+  spec *= 1.0 - crest * rainW;
   water += mix(vec3(0.45, 0.62, 1.0), vec3(0.72, 0.86, 0.8), uDayness) * spec * 0.52 * (0.18 + 0.82 * max(uCausticGain, 1.0 - uDayness));
-  float crestLift = mix(0.2, 0.03, rainW);
+  float crestLift = mix(0.2, 0.012, rainW);
   water += vec3(0.55, 0.7, 0.8) * smoothstep(0.05, 0.24, abs(h)) * crestLift;
 
   float edge = smoothstep(0.46, 0.72, max(abs(uv.x - 0.5), abs(uv.y - 0.5)));

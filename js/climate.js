@@ -712,8 +712,10 @@
         d.z -= d.vz * dt * (0.92 + 0.08 * Math.max(d.z, 0));
         if (d.z <= 0) {
           if (!calm && water) {
+            /* Size changes how hard the ring is pushed, not a drawn drop body.
+               The kernel stays tight so a large drop is not a white disc. */
             const mag = 0.06 + d.size * 0.11;
-            const rad = 1900 - (d.size - 0.68) * 1200;
+            const rad = 7200;
             water.impulse(d.tx / cssW, d.ty / cssH, mag, rad);
           }
           recycleDrop(d, look);
@@ -768,7 +770,6 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssW, cssH);
       if (drops.length) {
-        ctx.fillStyle = "rgba(226, 234, 238, 1)";
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
           if (d.z < 0.08 || d.z > 0.9) continue;
@@ -776,22 +777,26 @@
           const wave = Math.sin(d.phase || 0);
           const fade = wave > 0 ? wave * wave : 0;
           if (fade < 0.45) continue;
-          const foreshort = 0.35 + 0.65 * alt;
           const head = projectDrop(d, d.z);
-          const tail = projectDrop(d, Math.min(1, d.z + 0.22 * d.size));
+          /* Drop size is ripple-only. Streak length and width do not grow with it. */
+          const tail = projectDrop(d, Math.min(1, d.z + 0.2));
           const dx = head.x - tail.x;
           const dy = head.y - tail.y;
           const len = Math.hypot(dx, dy) || 1;
-          if (len < 10) continue;
+          if (len < 16) continue;
           const nx = -dy / len;
           const ny = dx / len;
-          const tailW = 0.38 * foreshort;
-          const headW = 0.1 * foreshort;
-          ctx.globalAlpha = d.a * fade * (0.1 + 0.16 * alt);
+          /* Hairline, slightly wider aloft, tip width 0 so it cannot read as a dot. */
+          const tailW = 0.4 * (0.55 + 0.45 * alt);
+          const g = ctx.createLinearGradient(tail.x, tail.y, head.x, head.y);
+          g.addColorStop(0, "rgba(198, 208, 214, 0.85)");
+          g.addColorStop(0.5, "rgba(198, 208, 214, 0.22)");
+          g.addColorStop(1, "rgba(198, 208, 214, 0)");
+          ctx.fillStyle = g;
+          ctx.globalAlpha = Math.min(0.2, d.a * fade * 0.26);
           ctx.beginPath();
           ctx.moveTo(tail.x + nx * tailW, tail.y + ny * tailW);
-          ctx.lineTo(head.x + nx * headW, head.y + ny * headW);
-          ctx.lineTo(head.x - nx * headW, head.y - ny * headW);
+          ctx.lineTo(head.x, head.y);
           ctx.lineTo(tail.x - nx * tailW, tail.y - ny * tailW);
           ctx.closePath();
           ctx.fill();

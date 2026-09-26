@@ -178,6 +178,7 @@
       fog: look.fog,
       dayness: look.dayness,
       rippleCalm: rippleCalm,
+      rain: look.rain || 0,
       distort: calm ? preset.lifeDistort * 0.35 : preset.lifeDistort,
       life: lifeCanvas,
       refreshLife: needLife,

@@ -71,7 +71,10 @@ function staticChecks() {
 
   const csproj = read("win/KoiPondWallpaper/KoiPondWallpaper.csproj");
   assert(!climate.includes("rgba(232, 240, 244"), "hit flashes still draw white dots", failures);
-  assert(csproj.includes("<Version>0.3.9</Version>"), "csproj not bumped to 0.3.9", failures);
+  assert(climate.includes("Drop size is ripple-only"), "streaks still scale with drop size", failures);
+  assert(water.includes("uniform float uRain"), "WATER_FS missing uRain", failures);
+  assert(water.includes("fade that glint"), "rain crests can still shade as white discs", failures);
+  assert(csproj.includes("<Version>0.3.10</Version>"), "csproj not bumped to 0.3.10", failures);
   return failures;
 }
 
@@ -509,6 +512,68 @@ async function runBrowser() {
       console.log("  wx specks", specks);
       if (specks.bright > 40) {
         failures.push("rain: opaque white specks (" + specks.bright + ")");
+      }
+      const blobs = await page.evaluate(() => {
+        const water = document.getElementById("water");
+        const life = document.getElementById("life");
+        const tw = 480;
+        const th = 270;
+        const wcv = document.createElement("canvas");
+        wcv.width = tw;
+        wcv.height = th;
+        const wctx = wcv.getContext("2d", { willReadFrequently: true });
+        wctx.drawImage(water, 0, 0, tw, th);
+        const wd = wctx.getImageData(0, 0, tw, th).data;
+        const lcv = document.createElement("canvas");
+        lcv.width = tw;
+        lcv.height = th;
+        const lctx = lcv.getContext("2d", { willReadFrequently: true });
+        if (life && life.width > 2) lctx.drawImage(life, 0, 0, tw, th);
+        const ld = lctx.getImageData(0, 0, tw, th).data;
+        const mask = new Uint8Array(tw * th);
+        let bright = 0;
+        for (let i = 0; i < tw * th; i++) {
+          if (ld[i * 4 + 3] > 28) continue;
+          const r = wd[i * 4];
+          const g = wd[i * 4 + 1];
+          const b = wd[i * 4 + 2];
+          if (r > 175 && g > 175 && b > 160 && Math.abs(r - g) < 30 && Math.abs(g - b) < 40) {
+            mask[i] = 1;
+            bright++;
+          }
+        }
+        const seen = new Uint8Array(tw * th);
+        const stack = [];
+        let blobs = 0;
+        for (let i = 0; i < mask.length; i++) {
+          if (!mask[i] || seen[i]) continue;
+          let area = 0;
+          stack.push(i);
+          seen[i] = 1;
+          while (stack.length) {
+            const p = stack.pop();
+            area++;
+            const x = p % tw;
+            const y = (p / tw) | 0;
+            const nbs = [p - 1, p + 1, p - tw, p + tw];
+            for (let k = 0; k < 4; k++) {
+              const q = nbs[k];
+              if (q < 0 || q >= mask.length || seen[q] || !mask[q]) continue;
+              const qx = q % tw;
+              if (k < 2 && qx === 0 && x === tw - 1) continue;
+              if (k < 2 && qx === tw - 1 && x === 0) continue;
+              if ((q / tw) | 0 !== y && k < 2) continue;
+              seen[q] = 1;
+              stack.push(q);
+            }
+          }
+          if (area >= 6 && area <= 700) blobs++;
+        }
+        return { bright: bright, blobs: blobs };
+      });
+      console.log("  open-water white blobs", blobs);
+      if (blobs.blobs > 6) {
+        failures.push("rain: white drop blobs on open water (" + blobs.blobs + ", px " + blobs.bright + ")");
       }
     }
     await drive(page, 0.35);

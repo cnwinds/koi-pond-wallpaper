@@ -7,7 +7,8 @@
  * - Yaw capped so turn radius stays >= 0.85 body lengths (swim through
  *   turns; do not spin about the head)
  * - Cruise speed with slow noise; accel/decel is rate-capped
- * - Small sin wiggle on the move angle; tail-beat Hz ~ speed / length
+ * - Small sin wiggle on the move angle
+ * - Tail-beat Hz and amplitude track current speed (slow cruise / food burst)
  * - IK joint chain from the head, per-link + cumulative bend limits
  *
  * Inspired by the publicly visible koi.rest client approach, plus
@@ -104,6 +105,8 @@
         food: null,
         eatT: 0,
         rippleT: rng() * 2,
+        beatAmp: 0.4,
+        beatHz: 0.35,
         spine: null,
       };
       initSpine(f);
@@ -270,7 +273,9 @@
         let desired = Math.atan2(prev.y - spine[i].y, prev.x - spine[i].x);
         let diff = clamp(angWrap(desired - prev.a), -JOINT_LIMIT, JOINT_LIMIT);
         let a = prev.a + diff;
-        a = f.heading + clamp(angWrap(a - f.heading), -MAX_BEND, MAX_BEND);
+        const tail = i / (SPINE_N - 1);
+        const beat = Math.sin(f.phase) * (f.beatAmp || 0.3) * tail * tail * 0.9;
+        a = f.heading + clamp(angWrap(a - f.heading + beat), -MAX_BEND, MAX_BEND);
         spine[i].a = a;
         spine[i].x = prev.x - Math.cos(a) * spacing;
         spine[i].y = prev.y - Math.sin(a) * spacing;
@@ -393,16 +398,18 @@
         f.heading = angWrap(f.heading + omega * dt);
         f.angle = f.heading;
 
-        const speedRatio = clamp(f.speed / f.cruise, 0.4, 1.6);
-        const wiggle = Math.sin(f.phase) * 0.38 * speedRatio * (calm ? 0.4 : 1);
+        const pace = clamp(f.speed / f.cruise, 0.06, 1.85);
+        const calmMul = calm ? 0.4 : 1;
+        f.beatAmp = calmMul * (0.14 + 0.72 * ((pace - 0.06) / 1.79));
+        f.beatHz = calmMul * (0.14 + 0.7 * clamp(pace, 0, 1.55));
+        const wiggle = Math.sin(f.phase) * 0.34 * f.beatAmp * 1.15;
         const moveAngle = f.heading + wiggle;
         f.x += Math.cos(moveAngle) * f.speed * dt + currentX * dt;
         f.y += Math.sin(moveAngle) * f.speed * dt + currentY * dt;
         f.x = clamp(f.x, 12, cssW - 12);
         f.y = clamp(f.y, 12, cssH - 12);
 
-        const beatHz = clamp(f.speed / (len * 0.8), 0.12, 0.65);
-        f.phase += dt * TWO_PI * beatHz;
+        f.phase += dt * TWO_PI * f.beatHz;
 
         resolveIK(f);
 
@@ -527,10 +534,12 @@
     function drawTail(f, pal) {
       const ped = sampleSpine(f.spine, 0.97);
       const len = bodyLength(f);
-      const spread = 0.86 + Math.sin(f.phase) * 0.1;
+      const amp = f.beatAmp != null ? f.beatAmp : 0.4;
+      const swing = Math.sin(f.phase) * amp;
+      const spread = 0.76 + Math.abs(Math.sin(f.phase)) * (0.1 + 0.34 * amp);
       ctx.save();
       ctx.translate(ped.x, ped.y);
-      ctx.rotate(ped.a + Math.PI);
+      ctx.rotate(ped.a + Math.PI + swing * 0.62);
       ctx.globalAlpha = 0.78;
       ctx.fillStyle = pal.edge;
       ctx.beginPath();
@@ -553,7 +562,7 @@
 
     function drawFins(f, pal) {
       const len = bodyLength(f);
-      const flap = Math.sin(f.phase * 1.15) * 0.2;
+      const flap = Math.sin(f.phase * 1.15) * (0.1 + 0.28 * (f.beatAmp != null ? f.beatAmp : 0.4));
       const pec = sampleSpine(f.spine, 0.2);
       const hw = profileHalf(0.2) * len;
       for (let side = -1; side <= 1; side += 2) {

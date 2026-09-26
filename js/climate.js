@@ -666,7 +666,7 @@
         tx: Math.random() * cssW,
         ty: Math.random() * cssH,
         z: fromSky ? 1 : Math.random(),
-        vz: 1.75 + Math.random() * 0.5,
+        vz: 3.4 + Math.random() * 0.9,
         size: 0.68 + Math.random() * 0.74,
         slantX: slant.x * spread,
         slantY: slant.y * spread,
@@ -682,7 +682,7 @@
       d.tx = Math.random() * cssW;
       d.ty = Math.random() * cssH;
       d.z = 0.82 + Math.random() * 0.18;
-      d.vz = 1.75 + Math.random() * 0.5;
+      d.vz = 3.4 + Math.random() * 0.9;
       d.size = 0.68 + Math.random() * 0.74;
       d.slantX = slant.x * spread;
       d.slantY = slant.y * spread;
@@ -709,7 +709,7 @@
       for (let i = 0; i < drops.length; i++) {
         const d = drops[i];
         d.phase += dt * (d.flickerHz || 1.2);
-        d.z -= d.vz * dt * (0.78 + 0.22 * Math.max(d.z, 0));
+        d.z -= d.vz * dt * (0.92 + 0.08 * Math.max(d.z, 0));
         if (d.z <= 0) {
           if (!calm && water) {
             const mag = 0.06 + d.size * 0.11;

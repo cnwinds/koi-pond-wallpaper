@@ -414,9 +414,14 @@ async function runBrowser() {
       await drive(page, 1.05);
       const motion = await page.evaluate(() => {
         const a = KoiPond.climate.debugDrops ? KoiPond.climate.debugDrops() : [];
+        /* Two frames: a 0.25s window recycles drops that cross in ~0.25s,
+           so the tracker would only see the slowest survivors. Scale Δz
+           back to a 0.25s equivalent for the v0.3.8 comparison. */
         const dt = 0.05;
-        for (let i = 0; i < 5; i++) KoiPond.drawFrame(dt);
+        const frames = 2;
+        for (let i = 0; i < frames; i++) KoiPond.drawFrame(dt);
         const b = KoiPond.climate.debugDrops ? KoiPond.climate.debugDrops() : [];
+        const scale = 0.25 / (dt * frames);
         const dys = [];
         for (let i = 0; i < a.length; i++) {
           const da = a[i];
@@ -467,7 +472,7 @@ async function runBrowser() {
           aboveHit: aboveHit,
           count: a.length,
           slope: slopeN ? slopeSum / slopeN : 0,
-          meanDz: dzN ? dzSum / dzN : 0,
+          meanDz: dzN ? (dzSum / dzN) * scale : 0,
           fadeLo: fadeLo,
           fadeHi: fadeHi,
         };
@@ -480,7 +485,7 @@ async function runBrowser() {
       if (!(motion.slope > 0.12 && motion.slope < 0.62)) {
         failures.push("rain: slant not steep (lateral/vertical " + motion.slope + ")");
       }
-      if (motion.meanDz < 0.28) failures.push("rain: fall too slow (Δz " + motion.meanDz + " / 0.25s)");
+      if (motion.meanDz < 0.7) failures.push("rain: fall not faster than v0.3.8 (Δz " + motion.meanDz + " / 0.25s)");
       if (motion.fadeLo < 4 || motion.fadeHi < 4) {
         failures.push("rain: opacity not pulsing (low " + motion.fadeLo + ", high " + motion.fadeHi + ")");
       }

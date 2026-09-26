@@ -1,4 +1,7 @@
-/* WebGL2 pond water with height-field ripples and soft caustics. Canvas 2D fallback. */
+/* WebGL2 pond water with height-field ripples and soft caustics. Canvas 2D fallback.
+ * Visible splash language is classic concentric circles that expand and fade.
+ * Height-field warp of the fish stays the subdued #6 values.
+ */
 (function (global) {
   function clamp255(n) {
     return Math.min(255, Math.max(0, n));
@@ -447,7 +450,7 @@ void main() {
       kind: "canvas2d",
       compositesLife: true,
       impulse: function (nx, ny, strength) {
-        rings.push({ x: nx, y: ny, r: 3 + strength * 28, a: 0.3 * strength, s: strength });
+        rings.push({ x: nx, y: ny, r: 3 + strength * 22, a: 0.28 * strength, s: strength });
       },
       step: function () {},
       rebuild: function () {},
@@ -499,7 +502,7 @@ void main() {
           ctx.globalAlpha = Math.min(0.7, ring.a * 1.6);
           ctx.lineWidth = 2.4;
           ctx.beginPath();
-          ctx.ellipse(ring.x * cssW, ring.y * cssH, ring.r, ring.r * 0.86, 0, 0, Math.PI * 2);
+          ctx.arc(ring.x * cssW, ring.y * cssH, ring.r, 0, Math.PI * 2);
           ctx.stroke();
         }
         ctx.restore();
@@ -567,7 +570,32 @@ void main() {
     }
 
     const queue = [];
+    const rings = [];
     let damp = 0.988;
+
+    function clamp01(n, a, b) {
+      return Math.min(b, Math.max(a, n));
+    }
+
+    function spawnRings(nx, ny, strength) {
+      const s = clamp01(strength, 0.02, 1);
+      const n = s >= 0.4 ? 3 : 2;
+      const life = 0.8 + s * 1.05;
+      const grow = 64 + s * 120;
+      const baseA = 0.48 + s * 0.46;
+      for (let i = 0; i < n; i++) {
+        rings.push({
+          x: nx,
+          y: ny,
+          r: 4 + i * (11 + s * 16),
+          grow: grow * (1 - i * 0.1),
+          age: 0,
+          life: life + i * 0.18,
+          a0: baseA * (1 - i * 0.26),
+          w: 1.2 + s * 2.15 - i * 0.28,
+        });
+      }
+    }
 
     return {
       kind: function () {
@@ -578,6 +606,10 @@ void main() {
       },
       impulse: function (nx, ny, strength) {
         queue.push(nx, ny, strength);
+        spawnRings(nx, ny, strength);
+      },
+      ring: function (nx, ny, strength) {
+        spawnRings(nx, ny, strength);
       },
       setQuality: function (nextQuality) {
         damp = nextQuality.ripple >= 400 ? 0.991 : nextQuality.ripple >= 240 ? 0.988 : 0.983;
@@ -592,9 +624,46 @@ void main() {
           impl.step(damp);
           if (dt > 0.028) impl.step(damp);
         }
+        for (let i = rings.length - 1; i >= 0; i--) {
+          const ring = rings[i];
+          ring.age += dt;
+          ring.r += ring.grow * dt;
+          if (ring.age >= ring.life) rings.splice(i, 1);
+        }
       },
       render: function (cssW, cssH, pixelW, pixelH, time, opts) {
         impl.render(cssW, cssH, pixelW, pixelH, time, opts);
+      },
+      renderRings: function (ctx, cssW, cssH, pixelRatio) {
+        if (!ctx || !rings.length) return;
+        const dpr = pixelRatio || 1;
+        ctx.save();
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        for (let i = 0; i < rings.length; i++) {
+          const ring = rings[i];
+          const u = ring.age / ring.life;
+          const fade = (1 - u) * (1 - u);
+          const a = ring.a0 * fade;
+          if (a < 0.02) continue;
+          const x = ring.x * cssW;
+          const y = ring.y * cssH;
+          ctx.globalAlpha = a * 0.32;
+          ctx.strokeStyle = "rgba(8, 26, 24, 0.95)";
+          ctx.lineWidth = ring.w + 1.7;
+          ctx.beginPath();
+          ctx.arc(x, y, ring.r, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = a;
+          ctx.strokeStyle = "rgba(234, 244, 246, 0.96)";
+          ctx.lineWidth = Math.max(0.8, ring.w);
+          ctx.beginPath();
+          ctx.arc(x, y, ring.r, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+        ctx.globalAlpha = 1;
       },
     };
   }

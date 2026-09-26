@@ -163,6 +163,7 @@
       life: lifeCanvas,
     });
     climate.render(look);
+    water.renderRings(wxCanvas.getContext("2d"), cssW, cssH, dprCap());
     applyCssGrade(look);
 
     if (config.state.demo) {

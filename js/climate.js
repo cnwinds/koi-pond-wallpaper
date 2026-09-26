@@ -377,7 +377,6 @@
     let dripT = 0;
     let markT = 0;
     const drops = [];
-    const splashes = [];
     const listeners = [];
 
     function emit() {
@@ -603,20 +602,6 @@
       };
     }
 
-    function spawnSplash(d) {
-      const size = d.size != null ? d.size : 0.5;
-      splashes.push({
-        x: d.x,
-        y: clamp(d.y, 8, cssH - 6),
-        r: 2.4 + size * 8,
-        grow: 26 + size * 64,
-        age: 0,
-        life: 0.45 + size * 0.5,
-        a: 0.36 + size * 0.4,
-        thick: 1 + size * 2.1,
-      });
-    }
-
     function pickSplashDrop() {
       if (!drops.length) return null;
       let w = 0;
@@ -642,7 +627,6 @@
           splashStrength(d.size)
         );
       }
-      spawnSplash(d);
       const next = spawnDrop(true);
       d.x = next.x;
       d.y = next.y;
@@ -674,24 +658,16 @@
           d.a = next.a;
         }
       }
-      for (let i = splashes.length - 1; i >= 0; i--) {
-        const s = splashes[i];
-        s.age += dt;
-        s.r += s.grow * dt;
-        if (s.age >= s.life) splashes.splice(i, 1);
-      }
       if (!calm && look.rain > 0) {
-        markT += dt * look.rain * 3.4;
+        markT += dt * look.rain * 2.4;
         while (markT >= 1) {
           markT -= 1;
           const d = pickSplashDrop();
-          if (d) spawnSplash(d);
-          else {
-            spawnSplash({
-              x: (0.08 + Math.random() * 0.84) * cssW,
-              y: (0.12 + Math.random() * 0.76) * cssH,
-              size: rollDropSize(),
-            });
+          const size = d ? d.size : rollDropSize();
+          const x = d ? d.x : (0.08 + Math.random() * 0.84) * cssW;
+          const y = d ? d.y : (0.12 + Math.random() * 0.76) * cssH;
+          if (water && water.ring) {
+            water.ring(clamp(x / cssW, 0.04, 0.96), clamp(y / cssH, 0.06, 0.94), splashStrength(size));
           }
         }
         if (water && quality.rainDrips) {
@@ -703,13 +679,11 @@
               impactDrop(d, water);
             } else {
               const size = rollDropSize();
-              const hit = {
-                x: (0.08 + Math.random() * 0.84) * cssW,
-                y: (0.1 + Math.random() * 0.78) * cssH,
-                size: size,
-              };
-              water.impulse(hit.x / cssW, hit.y / cssH, splashStrength(size));
-              spawnSplash(hit);
+              water.impulse(
+                0.08 + Math.random() * 0.84,
+                0.1 + Math.random() * 0.78,
+                splashStrength(size)
+              );
             }
           }
         }
@@ -795,27 +769,6 @@
             ctx.fillStyle = "rgba(236, 244, 246, 0.95)";
             ctx.beginPath();
             ctx.ellipse(d.x, d.y, 1.15 + d.size * 1.25, 1.7 + d.size * 1.7, 0, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-        ctx.globalAlpha = 1;
-      }
-      if (splashes.length) {
-        ctx.lineCap = "round";
-        for (let i = 0; i < splashes.length; i++) {
-          const s = splashes[i];
-          const u = clamp(s.age / s.life, 0, 1);
-          const fade = (1 - u) * s.a;
-          ctx.globalAlpha = fade;
-          ctx.strokeStyle = "rgba(226, 236, 238, 0.95)";
-          ctx.lineWidth = s.thick * (1 - u * 0.45);
-          ctx.beginPath();
-          ctx.ellipse(s.x, s.y, s.r * 1.15, s.r * 0.78, 0, 0, Math.PI * 2);
-          ctx.stroke();
-          if (u < 0.45) {
-            ctx.fillStyle = "rgba(220, 232, 234, 0.55)";
-            ctx.beginPath();
-            ctx.ellipse(s.x, s.y, 1.1 + s.r * 0.18, 0.7 + s.r * 0.12, 0, 0, Math.PI * 2);
             ctx.fill();
           }
         }

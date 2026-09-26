@@ -669,7 +669,7 @@
         size: 0.68 + Math.random() * 0.74,
         slantX: slant.x * (0.82 + Math.random() * 0.36),
         slantY: slant.y * (0.82 + Math.random() * 0.36),
-        a: 0.22 + Math.random() * 0.2,
+        a: 0.3 + Math.random() * 0.22,
       };
     }
 
@@ -682,7 +682,7 @@
       d.size = 0.68 + Math.random() * 0.74;
       d.slantX = slant.x * (0.82 + Math.random() * 0.36);
       d.slantY = slant.y * (0.82 + Math.random() * 0.36);
-      d.a = 0.22 + Math.random() * 0.2;
+      d.a = 0.3 + Math.random() * 0.22;
     }
 
     function projectDrop(d, z) {
@@ -776,15 +776,15 @@
           const alt = clamp(d.z, 0, 1);
           const foreshort = 0.3 + 0.7 * alt;
           const head = projectDrop(d, d.z);
-          const tail = projectDrop(d, Math.min(1, d.z + 0.05 * d.size));
+          const tail = projectDrop(d, Math.min(1, d.z + 0.065 * d.size));
           const dx = head.x - tail.x;
           const dy = head.y - tail.y;
           const len = Math.hypot(dx, dy) || 1;
           const nx = -dy / len;
           const ny = dx / len;
-          const tailW = (0.55 + 0.45 * d.size) * foreshort;
-          const headW = (0.12 + 0.16 * d.size) * (0.4 + 0.6 * alt);
-          ctx.globalAlpha = d.a * (0.14 + 0.32 * alt);
+          const tailW = (0.7 + 0.55 * d.size) * foreshort;
+          const headW = (0.16 + 0.18 * d.size) * (0.4 + 0.6 * alt);
+          ctx.globalAlpha = d.a * (0.2 + 0.38 * alt);
           ctx.beginPath();
           ctx.moveTo(tail.x + nx * tailW, tail.y + ny * tailW);
           ctx.lineTo(head.x + nx * headW, head.y + ny * headW);
@@ -792,9 +792,9 @@
           ctx.lineTo(tail.x - nx * tailW, tail.y - ny * tailW);
           ctx.closePath();
           ctx.fill();
-          ctx.globalAlpha = d.a * (0.1 + 0.2 * alt);
+          ctx.globalAlpha = d.a * (0.14 + 0.24 * alt);
           ctx.beginPath();
-          ctx.arc(head.x, head.y, (0.22 + 0.28 * d.size) * foreshort, 0, Math.PI * 2);
+          ctx.arc(head.x, head.y, (0.28 + 0.32 * d.size) * foreshort, 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.globalAlpha = 1;

@@ -367,6 +367,8 @@ async function runBrowser() {
       if (motion.n < 5) failures.push("rain: could not track falling drops");
       if (motion.meanDy <= 0.15) failures.push("rain: mean dy " + motion.meanDy + " — not falling down");
       if (motion.aboveHit < 2) failures.push("rain: high-z drops are not above their hit points");
+      const rainFile = path.join(outDir, "rain-settled.png");
+      await captureFrame(page, rainFile);
     }
     await drive(page, 0.35);
     await page.evaluate(() => KoiPond.preview({ sky: "clear", time: "day", ui: 0 }));

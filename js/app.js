@@ -55,25 +55,39 @@
 
   function dprCap() {
     const want = config.preset().dpr;
-    return Math.max(1, Math.min(global.devicePixelRatio || 1, want));
+    const view = global.visualViewport;
+    const raw = (view && view.scale ? global.devicePixelRatio * view.scale : global.devicePixelRatio) || 1;
+    return Math.max(1, Math.min(raw, want));
   }
 
-  function resize() {
+  function allocCanvas(cv, w, h, force) {
+    if (force && cv.width === w && cv.height === h) {
+      cv.width = Math.max(1, w - 1);
+    }
+    if (cv.width !== w) cv.width = w;
+    if (cv.height !== h) cv.height = h;
+  }
+
+  function resize(opts) {
+    opts = opts || {};
     cssW = Math.max(1, global.innerWidth || document.documentElement.clientWidth);
     cssH = Math.max(1, global.innerHeight || document.documentElement.clientHeight);
     const dpr = dprCap();
     pixelW = Math.max(1, Math.round(cssW * dpr));
     pixelH = Math.max(1, Math.round(cssH * dpr));
-    waterCanvas.width = pixelW;
-    waterCanvas.height = pixelH;
-    lifeCanvas.width = pixelW;
-    lifeCanvas.height = pixelH;
+    const force = !!opts.forceRealloc;
+    allocCanvas(waterCanvas, pixelW, pixelH, force);
+    allocCanvas(lifeCanvas, pixelW, pixelH, force);
     world.resize(cssW, cssH, dpr);
-    climate.resize(cssW, cssH, dpr);
+    climate.resize(cssW, cssH, dpr, force);
+    refreshLife = true;
   }
 
   let lastQuality = config.state.quality;
   let lastRainAmt = 0;
+  let lastBlendKey = "";
+  let refreshLife = false;
+  let surfaceCheckT = 0;
 
   function applyWorldSettings() {
     const preset = config.preset();
@@ -83,7 +97,7 @@
     if (config.state.quality !== lastQuality) {
       lastQuality = config.state.quality;
       water.setQuality(preset);
-      resize();
+      resize({ forceRealloc: true });
     }
   }
 
@@ -150,12 +164,32 @@
     const look = climate.tick(dt, target, preset, water, calm) || target;
     const ambient = (calm ? 0.25 : preset.ambientWaves) * look.ambientMul;
     if (water.setRain) water.setRain(look.rain);
-    const leavingRain = lastRainAmt > 0.18 && look.rain < 0.18;
+    const blending =
+      Math.abs((look.rain || 0) - (target.rain || 0)) > 0.015 ||
+      Math.abs((look.dayness || 0) - (target.dayness || 0)) > 0.015 ||
+      Math.abs((look.haze || 0) - (target.haze || 0)) > 0.02;
+    const rainBand = look.rain > 0.45 ? "h" : look.rain > 0.18 ? "m" : look.rain > 0.04 ? "l" : "z";
+    const blendKey = (target.sky || "auto") + "/" + (target.timeOverride || "auto") + "/" + rainBand;
+    const crossedRain = (lastRainAmt > 0.2 && look.rain <= 0.2) || (lastRainAmt <= 0.2 && look.rain > 0.2);
     lastRainAmt = look.rain;
-    if (leavingRain && water.ensureBuffer) water.ensureBuffer(pixelW, pixelH);
+    if (blending && blendKey !== lastBlendKey) {
+      lastBlendKey = blendKey;
+      resize({ forceRealloc: true });
+    } else if (crossedRain) {
+      resize({ forceRealloc: true });
+    }
+    surfaceCheckT += dt;
+    if (surfaceCheckT > 0.5) {
+      surfaceCheckT = 0;
+      if (water.bufferMismatch && water.bufferMismatch(pixelW, pixelH)) {
+        resize({ forceRealloc: true });
+      }
+    }
     water.update(dt);
     world.update(dt, water, preset, look);
     world.render(preset, look);
+    const needLife = refreshLife;
+    refreshLife = false;
     water.render(cssW, cssH, pixelW, pixelH, time, {
       caustics: preset.caustics && !calm && look.causticGain > 0.04,
       ambient: ambient,
@@ -166,8 +200,7 @@
       dayness: look.dayness,
       distort: calm ? preset.lifeDistort * 0.35 : preset.lifeDistort,
       life: lifeCanvas,
-      refreshLife: leavingRain,
-      ensureBuffer: look.rain > 0.02 && look.rain < 0.35,
+      refreshLife: needLife,
     });
     climate.render(look);
     applyCssGrade(look);
@@ -343,7 +376,14 @@
     blurFps = null;
     last = 0;
   });
-  global.addEventListener("resize", resize);
+  global.addEventListener("resize", function () {
+    resize({ forceRealloc: true });
+  });
+  if (global.visualViewport) {
+    global.visualViewport.addEventListener("resize", function () {
+      resize({ forceRealloc: true });
+    });
+  }
   document.addEventListener("pointerdown", onPointer);
   document.addEventListener("pointermove", function (ev) {
     if (!hud || !config.state.ui) return;

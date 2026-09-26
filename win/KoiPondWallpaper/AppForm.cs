@@ -34,6 +34,7 @@ internal sealed class AppForm : Form, IPondHost
         {
             Dock = DockStyle.Fill,
             DefaultBackgroundColor = Color.FromArgb(8, 22, 20),
+            ZoomFactor = 1,
         };
         Controls.Add(_web);
 
@@ -252,6 +253,7 @@ internal sealed class AppForm : Form, IPondHost
             CoreWebView2HostResourceAccessKind.Allow);
         // Keep the hideable gear so day/night and weather can be previewed
         // on the wallpaper. ?ui=0 would persist a hidden HUD in localStorage.
+        _web.ZoomFactor = 1;
         _web.CoreWebView2.Navigate("https://pond.local/index.html");
     }
 

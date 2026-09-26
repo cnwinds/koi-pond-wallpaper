@@ -295,12 +295,16 @@ async function sampleSun(page, seconds) {
       const look = KoiPond.snapshot().look;
       return { mean: sum / n, hi: hi / n, gain: look.causticGain, day: look.dayness };
     }
-    const dt = 0.15;
+    const dt = 0.05;
     const steps = Math.max(1, Math.round(sec / dt));
     const samples = [];
+    let t = 0;
     for (let i = 0; i < steps; i++) {
       KoiPond.drawFrame(dt);
-      samples.push(metric());
+      t += dt;
+      const row = metric();
+      row.t = t;
+      samples.push(row);
     }
     return samples;
   }, seconds);
@@ -308,23 +312,30 @@ async function sampleSun(page, seconds) {
 
 function lightPop(samples) {
   if (!samples || samples.length < 4) return { pop: false, lateMax: 0, lateT: 0, span: 0 };
-  const his = samples.map(function (s) { return s.hi; });
-  const span = his[his.length - 1] - his[0];
+  const span = samples[samples.length - 1].hi - samples[0].hi;
+  const meanSpan = samples[samples.length - 1].mean - samples[0].mean;
   let lateMax = 0;
+  let lateMean = 0;
   let lateT = 0;
-  for (let i = 1; i < his.length; i++) {
-    const t = i * 0.15;
-    const d = his[i] - his[i - 1];
+  for (let i = 1; i < samples.length; i++) {
+    const t = samples[i].t;
+    const d = samples[i].hi - samples[i - 1].hi;
+    const dm = samples[i].mean - samples[i - 1].mean;
     if (t > 1.05 && d > lateMax) {
       lateMax = d;
       lateT = t;
     }
+    if (t > 1.05 && dm > lateMean) lateMean = dm;
   }
   return {
     span: span,
+    meanSpan: meanSpan,
     lateMax: lateMax,
+    lateMean: lateMean,
     lateT: lateT,
-    pop: span > 0.03 && lateMax > Math.max(0.045, span * 0.38),
+    pop:
+      (span > 0.03 && lateMax > Math.max(0.045, span * 0.38)) ||
+      (meanSpan > 12 && lateMean > Math.max(8, meanSpan * 0.35)),
   };
 }
 

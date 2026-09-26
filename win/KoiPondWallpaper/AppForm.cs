@@ -1,17 +1,19 @@
+using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
 namespace KoiPondWallpaper;
 
-internal sealed class AppForm : Form
+internal sealed class AppForm : Form, IPondHost
 {
     readonly LaunchMode _mode;
     readonly string _webRoot;
     readonly WebView2 _web;
-    readonly NotifyIcon _tray;
+    readonly TrayHost _tray;
     readonly System.Windows.Forms.Timer _watch;
     bool _attached;
     bool _allowClose;
+    bool _pageReady;
 
     public AppForm(LaunchMode mode, string webRoot)
     {
@@ -35,48 +37,21 @@ internal sealed class AppForm : Form
         };
         Controls.Add(_web);
 
-        _tray = new NotifyIcon
-        {
-            Visible = true,
-            Text = "锦鲤池 · 桌面壁纸",
-            Icon = SystemIcons.Application,
-        };
-        var menu = new ContextMenuStrip();
-        menu.Items.Add("投喂 / Feed", null, async (_, _) => await FeedAsync());
-        menu.Items.Add("显示设置 / Show settings", null, async (_, _) => await PreviewAsync("{ui:true}"));
-        var timeMenu = new ToolStripMenuItem("天色预览 / Light");
-        timeMenu.DropDownItems.Add("自动（真实时钟） / Auto", null, async (_, _) => await PreviewAsync("{time:null}"));
-        timeMenu.DropDownItems.Add("昼 / Day", null, async (_, _) => await PreviewAsync("{time:'day'}"));
-        timeMenu.DropDownItems.Add("黄昏 / Dusk", null, async (_, _) => await PreviewAsync("{time:'dusk'}"));
-        timeMenu.DropDownItems.Add("夜 / Night", null, async (_, _) => await PreviewAsync("{time:'night'}"));
-        menu.Items.Add(timeMenu);
-        var weatherMenu = new ToolStripMenuItem("天气预览 / Weather");
-        weatherMenu.DropDownItems.Add("自动（实时天气） / Auto", null, async (_, _) => await PreviewAsync("{sky:null}"));
-        weatherMenu.DropDownItems.Add("晴 / Clear", null, async (_, _) => await PreviewAsync("{sky:'clear'}"));
-        weatherMenu.DropDownItems.Add("阴 / Cloudy", null, async (_, _) => await PreviewAsync("{sky:'cloudy'}"));
-        weatherMenu.DropDownItems.Add("雨 / Rain", null, async (_, _) => await PreviewAsync("{sky:'rain'}"));
-        weatherMenu.DropDownItems.Add("雾 / Fog", null, async (_, _) => await PreviewAsync("{sky:'fog'}"));
-        menu.Items.Add(weatherMenu);
-        menu.Items.Add("重新贴到桌面 / Pin desktop", null, async (_, _) => await AttachWallpaperAsync());
-        menu.Items.Add("用 Lively 设壁纸 / Lively", null, (_, _) => UseLivelyOrExplain());
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("窗口预览（不是桌面背景） / Preview only", null, (_, _) => ShowAsWindow());
-        menu.Items.Add("退出壁纸 / Exit", null, (_, _) => ExitApp());
-        _tray.ContextMenuStrip = menu;
-        _tray.DoubleClick += async (_, _) => await FeedAsync();
+        _tray = new TrayHost(this);
+        _ = _tray.Handle;
 
         _watch = new System.Windows.Forms.Timer { Interval = 12000 };
-        _watch.Tick += async (_, _) =>
+        _watch.Tick += (_, _) =>
         {
             if (_mode == LaunchMode.Window) return;
             if (_attached && !NativeDesktop.StillAttached(Handle))
             {
                 _attached = false;
-                await AttachWallpaperAsync();
+                Queue(AttachWallpaperAsync);
             }
         };
 
-        Load += async (_, _) => await BootAsync();
+        Load += (_, _) => Queue(BootAsync);
         FormClosing += (_, ev) =>
         {
             if (!_allowClose && ev.CloseReason == CloseReason.UserClosing)
@@ -88,7 +63,6 @@ internal sealed class AppForm : Form
         FormClosed += (_, _) =>
         {
             _watch.Stop();
-            _tray.Visible = false;
             _tray.Dispose();
             if (_attached) NativeDesktop.Detach(Handle);
         };
@@ -99,9 +73,77 @@ internal sealed class AppForm : Form
         get
         {
             var cp = base.CreateParams;
+            // Wallpaper must not steal focus from desktop icons.
+            // Tray UI lives on TrayHost, which stays activatable.
             cp.ExStyle |= 0x00000080 | 0x08000000; // TOOLWINDOW | NOACTIVATE
             return cp;
         }
+    }
+
+    IWin32Window DialogOwner => _tray.IsDisposed ? this : _tray;
+
+    void Queue(Func<Task> work)
+    {
+        if (IsDisposed) return;
+        if (InvokeRequired)
+        {
+            BeginInvoke(new MethodInvoker(() => Queue(work)));
+            return;
+        }
+        _ = RunSafeAsync(work);
+    }
+
+    async Task RunSafeAsync(Func<Task> work)
+    {
+        try
+        {
+            await work();
+        }
+        catch (Exception ex)
+        {
+            _tray.Balloon("操作失败：\n" + ex.Message, ToolTipIcon.Warning, 4000);
+        }
+    }
+
+    public void FeedFromTray() => Queue(() => SendPondAsync(new PondCommand("feed")));
+
+    public void OpenSettingsFromTray() => Queue(() => SendPondAsync(new PondCommand("openSettings")));
+
+    public void PreviewFromTray(string? time, bool hasTime, string? sky, bool hasSky)
+    {
+        Queue(() => SendPondAsync(new PondCommand("preview", time, hasTime, sky, hasSky)));
+    }
+
+    public void ReattachFromTray() => Queue(AttachWallpaperAsync);
+
+    public void UseLivelyFromTray()
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(UseLivelyFromTray);
+            return;
+        }
+        UseLivelyOrExplain();
+    }
+
+    public void ShowWindowPreviewFromTray()
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(ShowWindowPreviewFromTray);
+            return;
+        }
+        ShowAsWindow();
+    }
+
+    public void ExitFromTray()
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(ExitFromTray);
+            return;
+        }
+        ExitApp();
     }
 
     async Task BootAsync()
@@ -113,6 +155,7 @@ internal sealed class AppForm : Form
         catch (Exception ex)
         {
             MessageBox.Show(
+                DialogOwner,
                 "无法启动 WebView2。请安装或修复 Microsoft Edge WebView2 Runtime。\n\n" + ex.Message,
                 "锦鲤池",
                 MessageBoxButtons.OK,
@@ -139,13 +182,13 @@ internal sealed class AppForm : Form
         if (await AttachWallpaperAsync())
         {
             _watch.Start();
-            _tray.ShowBalloonTip(3500, "锦鲤池", "已设为桌面动态壁纸（图标后面）。托盘可投喂或退出。", ToolTipIcon.Info);
+            _tray.Balloon("已设为桌面动态壁纸（图标后面）。托盘可投喂、改天色天气或退出。");
             return;
         }
 
         if (LivelyBridge.IsInstalled() && LivelyBridge.TrySetWallpaper(_webRoot))
         {
-            _tray.ShowBalloonTip(4000, "锦鲤池", "已交给 Lively 设为桌面壁纸。", ToolTipIcon.Info);
+            _tray.Balloon("已交给 Lively 设为桌面壁纸。", ToolTipIcon.Info, 4000);
             ExitApp();
             return;
         }
@@ -198,6 +241,11 @@ internal sealed class AppForm : Form
                 e.State = CoreWebView2PermissionState.Allow;
             }
         };
+        _web.CoreWebView2.DOMContentLoaded += (_, _) => _pageReady = true;
+        _web.CoreWebView2.NavigationCompleted += (_, e) =>
+        {
+            if (e.IsSuccess) _pageReady = true;
+        };
         _web.CoreWebView2.SetVirtualHostNameToFolderMapping(
             "pond.local",
             _webRoot,
@@ -244,20 +292,21 @@ internal sealed class AppForm : Form
         Bounds = Screen.PrimaryScreen?.Bounds ?? SystemInformation.VirtualScreen;
         Show();
         Activate();
-        _tray.ShowBalloonTip(5000, "锦鲤池", "当前是窗口预览，不是桌面背景。请从托盘选「重新贴到桌面」。", ToolTipIcon.Info);
+        _tray.Balloon("当前是窗口预览，不是桌面背景。请从托盘选「重新贴到桌面」。", ToolTipIcon.Info, 5000);
     }
 
     bool UseLivelyOrExplain()
     {
         if (LivelyBridge.TrySetWallpaper(_webRoot))
         {
-            _tray.ShowBalloonTip(4000, "锦鲤池", "已用 Lively 设为桌面壁纸。", ToolTipIcon.Info);
+            _tray.Balloon("已用 Lively 设为桌面壁纸。", ToolTipIcon.Info, 4000);
             return true;
         }
         if (!LivelyBridge.IsInstalled())
         {
             LivelyBridge.OpenDownloadPage();
             MessageBox.Show(
+                DialogOwner,
                 "未检测到 Lively Wallpaper。已打开下载页。\n安装后再双击 koi-pond-wallpaper.exe，或从托盘选「用 Lively 设壁纸」。\n\nhttps://github.com/rocksdanister/lively/releases",
                 "锦鲤池",
                 MessageBoxButtons.OK,
@@ -265,6 +314,7 @@ internal sealed class AppForm : Form
             return false;
         }
         MessageBox.Show(
+            DialogOwner,
             "已把锦鲤池拷进 Lively 图库，但没能自动设为当前壁纸。请在 Lively 图库里选「锦鲤池」。",
             "锦鲤池",
             MessageBoxButtons.OK,
@@ -272,26 +322,97 @@ internal sealed class AppForm : Form
         return false;
     }
 
-    async Task FeedAsync()
+    async Task SendPondAsync(PondCommand command)
     {
-        if (_web.CoreWebView2 == null) return;
-        await _web.CoreWebView2.ExecuteScriptAsync(
-            "if(window.KoiPond)KoiPond.feed(window.innerWidth*0.5,window.innerHeight*0.42);");
-    }
+        if (_web.CoreWebView2 == null || !_pageReady)
+        {
+            _tray.Balloon("池塘还在加载，请稍后再试。", ToolTipIcon.Warning, 2500);
+            return;
+        }
 
-    async Task PreviewAsync(string jsObject)
-    {
-        if (_web.CoreWebView2 == null) return;
-        await _web.CoreWebView2.ExecuteScriptAsync(
-            "if(window.KoiPond)KoiPond.preview(" + jsObject + ");");
+        var json = command.ToJson();
+        try
+        {
+            var script =
+                "(function(){try{if(!window.KoiPond||!KoiPond.applyHostCommand)return 'missing';" +
+                "return String(KoiPond.applyHostCommand(" + json + "));}catch(e){return 'err';}})()";
+            var result = await _web.CoreWebView2.ExecuteScriptAsync(script);
+            if (result == "\"ok\"") return;
+            if (result == "\"missing\"")
+            {
+                try
+                {
+                    _web.CoreWebView2.PostWebMessageAsJson(json);
+                }
+                catch
+                {
+                    _tray.Balloon("池塘脚本尚未就绪，请稍后再试。", ToolTipIcon.Warning, 2500);
+                }
+                return;
+            }
+            if (result is "\"err\"" or "\"bad\"" or "\"unknown\"")
+            {
+                _tray.Balloon("无法应用托盘命令。", ToolTipIcon.Warning, 2500);
+            }
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                _web.CoreWebView2.PostWebMessageAsJson(json);
+            }
+            catch
+            {
+                _tray.Balloon("无法通知池塘：\n" + ex.Message, ToolTipIcon.Warning, 4000);
+            }
+        }
     }
 
     void ExitApp()
     {
         _allowClose = true;
         _attached = false;
-        _tray.Visible = false;
         Application.Exit();
+    }
+}
+
+internal readonly struct PondCommand
+{
+    public PondCommand(string action, string? time = null, bool hasTime = false, string? sky = null, bool hasSky = false)
+    {
+        Action = action;
+        Time = time;
+        HasTime = hasTime;
+        Sky = sky;
+        HasSky = hasSky;
+    }
+
+    public string Action { get; }
+    public string? Time { get; }
+    public bool HasTime { get; }
+    public string? Sky { get; }
+    public bool HasSky { get; }
+
+    public string ToJson()
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("action", Action);
+            if (HasTime)
+            {
+                if (Time == null) writer.WriteNull("time");
+                else writer.WriteString("time", Time);
+            }
+            if (HasSky)
+            {
+                if (Sky == null) writer.WriteNull("sky");
+                else writer.WriteString("sky", Sky);
+            }
+            writer.WriteEndObject();
+        }
+        return System.Text.Encoding.UTF8.GetString(stream.ToArray());
     }
 }
 

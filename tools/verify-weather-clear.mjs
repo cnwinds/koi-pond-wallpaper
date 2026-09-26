@@ -74,9 +74,12 @@ function staticChecks() {
   assert(climate.includes("Drop size is ripple-only"), "streaks still scale with drop size", failures);
   assert(water.includes("uniform float uRain"), "WATER_FS missing uRain", failures);
   assert(water.includes("fade that glint"), "rain crests can still shade as white discs", failures);
-  assert(climate.includes("lineWidth = 1.25"), "rain streaks are not a visible hairline", failures);
+  assert(climate.includes("lineWidth = 1.15"), "rain streaks are not a thin glass hairline", failures);
+  assert(climate.includes("Frosted glass"), "rain streaks are not the glass-transparent pass", failures);
+  assert(!climate.includes("globalAlpha = Math.min(0.72"), "rain streaks are still opaque strokes", failures);
   assert(!climate.includes("globalAlpha = Math.min(0.16"), "rain streaks are still nearly invisible", failures);
-  assert(csproj.includes("<Version>0.3.11</Version>"), "csproj not bumped to 0.3.11", failures);
+  assert(water.includes("soft slope sheen"), "rain rings are not lit after the veil", failures);
+  assert(csproj.includes("<Version>0.3.12</Version>"), "csproj not bumped to 0.3.12", failures);
   return failures;
 }
 
@@ -507,19 +510,24 @@ async function runBrowser() {
         const data = ctx.getImageData(0, 0, tmp.width, tmp.height).data;
         let bright = 0;
         let ink = 0;
+        let solid = 0;
         for (let i = 0; i < data.length; i += 4) {
           const a = data[i + 3];
-          if (a > 48) ink++;
+          if (a > 28) ink++;
+          if (a > 160) solid++;
           if (data[i] > 220 && data[i + 1] > 220 && data[i + 2] > 220 && a > 200) bright++;
         }
-        return { bright: bright, ink: ink, w: tmp.width, h: tmp.height };
+        return { bright: bright, ink: ink, solid: solid, w: tmp.width, h: tmp.height };
       });
       console.log("  wx specks", specks);
       if (specks.bright > 20) {
         failures.push("rain: opaque white specks (" + specks.bright + ")");
       }
-      if (!specks.ink || specks.ink < 350) {
-        failures.push("rain: streaks not visible (ink px " + (specks.ink || 0) + ")");
+      if (!specks.ink || specks.ink < 80) {
+        failures.push("rain: glass streaks not visible (ink px " + (specks.ink || 0) + ")");
+      }
+      if (specks.solid > 40) {
+        failures.push("rain: streaks too opaque (solid px " + specks.solid + ")");
       }
       const blobs = await page.evaluate(() => {
         const water = document.getElementById("water");
@@ -552,21 +560,53 @@ async function runBrowser() {
         }
         let bright = 0;
         let far = 0;
-        for (let i = 0; i < tw * th; i++) {
-          if (near[i]) continue;
-          const r = wd[i * 4];
-          const g = wd[i * 4 + 1];
-          const b = wd[i * 4 + 2];
-          if (r > 190 && g > 185 && b > 170 && Math.abs(r - g) < 30 && Math.abs(g - b) < 40) {
-            bright++;
-            far++;
+        let lumaSum = 0;
+        let openN = 0;
+        let ripple = 0;
+        for (let y = 0; y < th; y++) {
+          for (let x = 0; x < tw; x++) {
+            const i = y * tw + x;
+            if (near[i]) continue;
+            const r = wd[i * 4];
+            const g = wd[i * 4 + 1];
+            const b = wd[i * 4 + 2];
+            const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            lumaSum += luma;
+            openN++;
+            if (r > 190 && g > 185 && b > 170 && Math.abs(r - g) < 30 && Math.abs(g - b) < 40) {
+              bright++;
+              far++;
+            }
+            if (x + 3 < tw && y + 3 < th && !near[i + 3] && !near[i + 3 * tw]) {
+              const r2 = wd[(i + 3) * 4];
+              const g2 = wd[(i + 3) * 4 + 1];
+              const b2 = wd[(i + 3) * 4 + 2];
+              const r3 = wd[(i + 3 * tw) * 4];
+              const g3 = wd[(i + 3 * tw) * 4 + 1];
+              const b3 = wd[(i + 3 * tw) * 4 + 2];
+              const l2 = 0.2126 * r2 + 0.7152 * g2 + 0.0722 * b2;
+              const l3 = 0.2126 * r3 + 0.7152 * g3 + 0.0722 * b3;
+              if (Math.abs(luma - l2) + Math.abs(luma - l3) > 16) ripple++;
+            }
           }
         }
-        return { bright: bright, far: far };
+        return {
+          bright: bright,
+          far: far,
+          meanLuma: openN ? lumaSum / openN : 0,
+          ripple: ripple,
+          openN: openN,
+        };
       });
       console.log("  open-water white blobs", blobs);
       if (blobs.far > 40) {
         failures.push("rain: white drop pixels away from fish (" + blobs.far + ")");
+      }
+      if (!(blobs.meanLuma > 86)) {
+        failures.push("rain: open water still dark (mean luma " + (blobs.meanLuma || 0).toFixed(1) + ")");
+      }
+      if (!(blobs.ripple > 700)) {
+        failures.push("rain: faint ripples not readable (contrast px " + (blobs.ripple || 0) + ")");
       }
     }
     await drive(page, 0.35);

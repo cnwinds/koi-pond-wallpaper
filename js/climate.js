@@ -266,7 +266,7 @@
 
     let rain = 0;
     if (sky === "rain") rain = clamp(0.72 + precip * 0.22, 0.72, 1);
-    let fog = sky === "fog" ? 0.92 : sky === "rain" ? 0.28 : 0;
+    let fog = sky === "fog" ? 0.92 : sky === "rain" ? 0.2 : 0;
     if (sky === "cloudy") fog += 0.16;
 
     const dayTint =
@@ -275,7 +275,7 @@
         : sky === "cloudy"
           ? [0.72, 0.8, 0.88]
           : sky === "rain"
-            ? [0.66, 0.78, 0.8]
+            ? [0.8, 0.9, 0.92]
             : [0.8, 0.86, 0.84];
     const nightTint = [0.3, 0.48, 0.98];
     const tint = [
@@ -288,7 +288,7 @@
     tint[1] = lerp(tint[1], 0.78, twilight * 0.18);
     tint[2] = lerp(tint[2], 0.62, twilight * 0.2);
 
-    let exposure = lerp(0.32, sky === "clear" ? 1.06 : sky === "cloudy" ? 0.74 : sky === "rain" ? 0.74 : 0.68, dayness);
+    let exposure = lerp(0.32, sky === "clear" ? 1.06 : sky === "cloudy" ? 0.74 : sky === "rain" ? 0.9 : 0.68, dayness);
     if (sky === "fog") exposure *= 0.82;
 
     let causticGain = dayness * (sky === "clear" ? 1.15 : sky === "cloudy" ? 0.16 : 0.05);
@@ -772,8 +772,9 @@
       if (drops.length) {
         ctx.lineCap = "butt";
         ctx.lineJoin = "bevel";
-        /* Hairline in CSS pixels. Not scaled by drop size, so it cannot become a blob. */
-        ctx.lineWidth = 1.25;
+        /* Frosted glass shaft in CSS pixels. Hairline, not scaled by drop size.
+           Easy to miss until you look; never a bright white stroke. */
+        ctx.lineWidth = 1.15;
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
           if (d.z < 0.08 || d.z > 0.9) continue;
@@ -790,11 +791,11 @@
           const x1 = tail.x + dx * 0.92;
           const y1 = tail.y + dy * 0.92;
           const g = ctx.createLinearGradient(tail.x, tail.y, x1, y1);
-          g.addColorStop(0, "rgba(198, 214, 222, 1)");
-          g.addColorStop(0.82, "rgba(198, 214, 222, 0.88)");
-          g.addColorStop(1, "rgba(198, 214, 222, 0)");
+          g.addColorStop(0, "rgba(186, 208, 216, 1)");
+          g.addColorStop(0.78, "rgba(186, 208, 216, 0.75)");
+          g.addColorStop(1, "rgba(186, 208, 216, 0)");
           ctx.strokeStyle = g;
-          ctx.globalAlpha = Math.min(0.72, 0.42 + fade * 0.38);
+          ctx.globalAlpha = Math.min(0.44, 0.2 + fade * 0.26);
           ctx.beginPath();
           ctx.moveTo(tail.x, tail.y);
           ctx.lineTo(x1, y1);

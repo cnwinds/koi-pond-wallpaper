@@ -44,5 +44,19 @@
     "value": "121.4737",
     "text": "Longitude",
     "help": "Pin weather/sun. Leave the Shanghai default to auto-detect."
+  },
+  "previewTime": {
+    "type": "dropdown",
+    "value": 0,
+    "text": "Light preview",
+    "help": "Force day / dusk / night. Auto follows the real clock at your location.",
+    "items": ["Auto", "Day", "Dusk", "Night"]
+  },
+  "previewWeather": {
+    "type": "dropdown",
+    "value": 0,
+    "text": "Weather preview",
+    "help": "Force a sky for testing. Auto uses Open-Meteo (or cache / clear offline).",
+    "items": ["Auto", "Clear", "Cloudy", "Rain", "Fog"]
   }
 }

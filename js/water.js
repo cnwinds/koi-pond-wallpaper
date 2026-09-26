@@ -53,6 +53,7 @@ precision highp float;
 in vec2 vUv;
 out vec4 fragColor;
 uniform sampler2D uRipple;
+uniform sampler2D uLife;
 uniform vec2 uResolution;
 uniform vec2 uRippleTexel;
 uniform float uTime;
@@ -62,6 +63,9 @@ uniform float uExposure;
 uniform vec3 uTint;
 uniform float uCausticGain;
 uniform float uHaze;
+uniform float uDayness;
+uniform float uDistort;
+uniform float uHasLife;
 
 vec2 hash22(vec2 p) {
   p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
@@ -104,48 +108,75 @@ void main() {
     sin((uv.x * aspect + uv.y) * 3.4 - uTime * 0.17) * 0.008
   );
 
-  vec3 n = normalize(vec3((hL - hR) + amb * 4.0, (hD - hU) + amb * 3.0, 0.18));
-  vec2 refr = uv + n.xy * 0.045;
+  vec3 n = normalize(vec3((hL - hR) + amb * 4.0, (hD - hU) + amb * 3.0, 0.16));
+  vec2 refr = uv + n.xy * 0.05;
 
   vec2 d = (refr - 0.5) * vec2(aspect, 1.0);
   float radial = length(d);
   float depth = 1.0 - smoothstep(0.05, 0.78, radial);
 
-  vec3 deep = vec3(0.045, 0.15, 0.145);
-  vec3 mid = vec3(0.08, 0.28, 0.25);
-  vec3 shallow = vec3(0.15, 0.40, 0.33);
+  vec3 deepN = vec3(0.015, 0.03, 0.07);
+  vec3 midN = vec3(0.03, 0.055, 0.12);
+  vec3 shallowN = vec3(0.05, 0.09, 0.16);
+  vec3 deepD = vec3(0.045, 0.15, 0.145);
+  vec3 midD = vec3(0.08, 0.28, 0.25);
+  vec3 shallowD = vec3(0.16, 0.42, 0.34);
+  vec3 deep = mix(deepN, deepD, uDayness);
+  vec3 mid = mix(midN, midD, uDayness);
+  vec3 shallow = mix(shallowN, shallowD, uDayness);
   vec3 floorCol = mix(deep, mix(mid, shallow, depth), 0.86);
 
   float peb = noise(refr * vec2(aspect, 1.0) * 22.0);
-  floorCol += vec3(0.018, 0.024, 0.016) * peb;
-  floorCol += vec3(0.03, 0.04, 0.02) * noise(refr * 7.0 + 3.1) * 0.35;
+  floorCol += vec3(0.018, 0.024, 0.016) * peb * (0.35 + 0.65 * uDayness);
+  floorCol += vec3(0.03, 0.04, 0.02) * noise(refr * 7.0 + 3.1) * 0.35 * uDayness;
 
+  float cau = 0.0;
+  float cau2 = 0.0;
   if (uCaustics > 0.5) {
-    float cau = caustic(refr * vec2(aspect, 1.0) + n.xy * 0.8, uTime);
-    float cau2 = caustic(refr.yx * vec2(1.0, aspect) * 0.85 - n.xy * 0.4, uTime * 0.82 + 12.0);
+    cau = caustic(refr * vec2(aspect, 1.0) + n.xy * 0.8, uTime);
+    cau2 = caustic(refr.yx * vec2(1.0, aspect) * 0.85 - n.xy * 0.4, uTime * 0.82 + 12.0);
     floorCol += vec3(0.48, 0.64, 0.40) * (cau * 0.32 + cau2 * 0.18) * (0.5 + 0.5 * depth) * uCausticGain;
   }
 
-  vec3 water = floorCol * vec3(0.78, 0.96, 0.93);
+  vec3 water = floorCol * mix(vec3(0.7, 0.82, 1.05), vec3(0.78, 0.96, 0.93), uDayness);
 
-  vec3 L = normalize(vec3(-0.35, 0.48, 0.8));
+  vec3 L = normalize(mix(vec3(0.2, 0.15, 0.9), vec3(-0.35, 0.48, 0.8), uDayness));
   vec3 H = normalize(L + vec3(0.0, 0.0, 1.0));
   float spec = pow(max(dot(n, H), 0.0), 72.0);
-  water += vec3(0.72, 0.86, 0.8) * spec * 0.48 * (0.22 + 0.78 * uCausticGain);
-  water += vec3(0.55, 0.7, 0.66) * smoothstep(0.06, 0.22, abs(h)) * 0.14;
+  water += mix(vec3(0.45, 0.62, 1.0), vec3(0.72, 0.86, 0.8), uDayness) * spec * 0.52 * (0.18 + 0.82 * max(uCausticGain, 1.0 - uDayness));
+  water += vec3(0.55, 0.7, 0.8) * smoothstep(0.05, 0.24, abs(h)) * 0.2;
 
   float edge = smoothstep(0.46, 0.72, max(abs(uv.x - 0.5), abs(uv.y - 0.5)));
-  water = mix(water, vec3(0.045, 0.07, 0.05), edge * 0.38);
+  water = mix(water, mix(vec3(0.01, 0.02, 0.05), vec3(0.045, 0.07, 0.05), uDayness), edge * 0.42);
 
   float vig = smoothstep(1.2, 0.22, length((uv - 0.5) * vec2(1.25, 1.12)));
-  water *= 0.78 + 0.22 * vig;
-  water = max(water, vec3(0.05, 0.12, 0.11));
+  water *= 0.72 + 0.28 * vig;
+  water = max(water, mix(vec3(0.012, 0.02, 0.04), vec3(0.05, 0.12, 0.11), uDayness));
 
   float grain = fract(sin(dot(uv * uResolution + uTime * 12.0, vec2(12.9898, 78.233))) * 43758.5453);
   water += (grain - 0.5) * 0.012;
 
   water *= uTint * uExposure;
-  water = mix(water, vec3(0.44, 0.54, 0.56) * uExposure, clamp(uHaze, 0.0, 0.65));
+  water = mix(water, vec3(0.62, 0.7, 0.72) * uExposure, clamp(uHaze, 0.0, 0.75));
+
+  if (uHasLife > 0.5) {
+    vec2 warp = n.xy * uDistort + vec2(h, -h) * uDistort * 0.55;
+    vec2 lifeUv = uv + warp;
+    vec4 lifeC = texture(uLife, lifeUv);
+    if (uDistort > 0.045) {
+      lifeC.r = texture(uLife, lifeUv + warp * 0.22).r;
+      lifeC.b = texture(uLife, lifeUv - warp * 0.18).b;
+    }
+    vec3 sunT = vec3(1.14, 1.04, 0.86);
+    vec3 moonT = vec3(0.5, 0.68, 1.18);
+    vec3 lightT = mix(moonT, sunT, uDayness) * uTint;
+    float lightE = mix(0.52, 1.08, uDayness) * uExposure;
+    vec3 lit = lifeC.rgb * lightT * lightE;
+    lit += vec3(0.55, 0.74, 0.42) * (cau * 0.38 + cau2 * 0.2) * uCausticGain;
+    lit *= 1.0 + h * 0.45;
+    lit = mix(lit, vec3(0.7, 0.78, 0.8) * uExposure, clamp(uHaze * 0.45, 0.0, 0.4));
+    water = mix(water, lit, clamp(lifeC.a, 0.0, 1.0));
+  }
 
   fragColor = vec4(water, 1.0);
 }`;
@@ -229,6 +260,7 @@ void main() {
     } catch (err) {
       return {
         kind: "webgl2",
+        compositesLife: false,
         impulse: function () {},
         step: function () {},
         rebuild: function () {},
@@ -254,6 +286,7 @@ void main() {
     };
     const water = {
       uRipple: gl.getUniformLocation(waterProg, "uRipple"),
+      uLife: gl.getUniformLocation(waterProg, "uLife"),
       uResolution: gl.getUniformLocation(waterProg, "uResolution"),
       uRippleTexel: gl.getUniformLocation(waterProg, "uRippleTexel"),
       uTime: gl.getUniformLocation(waterProg, "uTime"),
@@ -263,7 +296,20 @@ void main() {
       uTint: gl.getUniformLocation(waterProg, "uTint"),
       uCausticGain: gl.getUniformLocation(waterProg, "uCausticGain"),
       uHaze: gl.getUniformLocation(waterProg, "uHaze"),
+      uDayness: gl.getUniformLocation(waterProg, "uDayness"),
+      uDistort: gl.getUniformLocation(waterProg, "uDistort"),
+      uHasLife: gl.getUniformLocation(waterProg, "uHasLife"),
     };
+
+    let lifeTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, lifeTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
+    let lifeW = 1;
+    let lifeH = 1;
 
     let curr = null;
     let prev = null;
@@ -340,14 +386,34 @@ void main() {
       next = old;
     }
 
+    function uploadLife(src) {
+      if (!src || !src.width) return false;
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, lifeTex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+      if (src.width !== lifeW || src.height !== lifeH) {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+        lifeW = src.width;
+        lifeH = src.height;
+      } else {
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, src);
+      }
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+      return true;
+    }
+
     function render(cssW, cssH, pixelW, pixelH, time, opts) {
       opts = opts || {};
+      const hasLife = uploadLife(opts.life);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, pixelW, pixelH);
       gl.useProgram(waterProg);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, curr.tex);
       gl.uniform1i(water.uRipple, 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, lifeTex);
+      gl.uniform1i(water.uLife, 1);
       gl.uniform2f(water.uResolution, cssW, cssH);
       gl.uniform2f(water.uRippleTexel, 1 / simW, 1 / simH);
       gl.uniform1f(water.uTime, time);
@@ -358,11 +424,15 @@ void main() {
       gl.uniform3f(water.uTint, tint[0], tint[1], tint[2]);
       gl.uniform1f(water.uCausticGain, opts.causticGain != null ? opts.causticGain : 1);
       gl.uniform1f(water.uHaze, opts.haze != null ? opts.haze : 0);
+      gl.uniform1f(water.uDayness, opts.dayness != null ? opts.dayness : 1);
+      gl.uniform1f(water.uDistort, opts.distort != null ? opts.distort : 0.04);
+      gl.uniform1f(water.uHasLife, hasLife ? 1 : 0);
       drawQuad(waterProg);
     }
 
     return {
       kind: "webgl2",
+      compositesLife: true,
       impulse,
       step,
       render,
@@ -378,6 +448,7 @@ void main() {
 
     return {
       kind: "canvas2d",
+      compositesLife: true,
       impulse: function (nx, ny, strength) {
         rings.push({ x: nx, y: ny, r: 4, a: 0.28 * strength, s: strength });
       },
@@ -386,11 +457,18 @@ void main() {
       render: function (cssW, cssH, pixelW, pixelH, time, opts) {
         opts = opts || {};
         t = time;
+        const dayness = opts.dayness != null ? opts.dayness : 1;
         ctx.setTransform(pixelW / cssW, 0, 0, pixelH / cssH, 0, 0);
         const g = ctx.createRadialGradient(cssW * 0.5, cssH * 0.42, cssH * 0.05, cssW * 0.5, cssH * 0.5, Math.max(cssW, cssH) * 0.72);
-        g.addColorStop(0, "#2a7a68");
-        g.addColorStop(0.42, "#1b564b");
-        g.addColorStop(1, "#0e2f2a");
+        if (dayness < 0.35) {
+          g.addColorStop(0, "#163050");
+          g.addColorStop(0.42, "#0c1c30");
+          g.addColorStop(1, "#060c16");
+        } else {
+          g.addColorStop(0, "#2a7a68");
+          g.addColorStop(0.42, "#1b564b");
+          g.addColorStop(1, "#0e2f2a");
+        }
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, cssW, cssH);
 
@@ -429,9 +507,30 @@ void main() {
         }
         ctx.restore();
 
+        if (opts.life) {
+          const bands = 40;
+          const bh = cssH / bands;
+          const distort = opts.distort != null ? opts.distort : 0.04;
+          ctx.save();
+          ctx.imageSmoothingEnabled = true;
+          for (let i = 0; i < bands; i++) {
+            const y = i * bh;
+            const ny = (i + 0.5) / bands;
+            let ox = Math.sin(ny * 16 + t * 1.5) * distort * 90;
+            for (let r = 0; r < rings.length; r++) {
+              const ring = rings[r];
+              const dy = ny - ring.y;
+              const fall = Math.exp(-dy * dy * 40);
+              ox += Math.sin(ring.r * 0.05) * ring.a * 26 * fall;
+            }
+            ctx.drawImage(opts.life, 0, (y / cssH) * opts.life.height, opts.life.width, (bh / cssH) * opts.life.height + 1.5, ox, y, cssW, bh + 0.8);
+          }
+          ctx.restore();
+        }
+
         const vg = ctx.createRadialGradient(cssW * 0.5, cssH * 0.5, Math.min(cssW, cssH) * 0.2, cssW * 0.5, cssH * 0.5, Math.max(cssW, cssH) * 0.7);
         vg.addColorStop(0, "rgba(0,0,0,0)");
-        vg.addColorStop(1, "rgba(0,0,0,0.32)");
+        vg.addColorStop(1, dayness < 0.35 ? "rgba(0,0,8,0.5)" : "rgba(0,0,0,0.32)");
         ctx.fillStyle = vg;
         ctx.fillRect(0, 0, cssW, cssH);
 
@@ -450,7 +549,7 @@ void main() {
         ctx.fillRect(0, 0, cssW, cssH);
         ctx.restore();
         if (opts.haze) {
-          ctx.fillStyle = "rgba(150, 170, 174, " + Math.min(0.45, opts.haze * 0.5) + ")";
+          ctx.fillStyle = "rgba(150, 170, 174, " + Math.min(0.55, opts.haze * 0.62) + ")";
           ctx.fillRect(0, 0, cssW, cssH);
         }
       },
@@ -474,6 +573,9 @@ void main() {
     return {
       kind: function () {
         return impl.kind;
+      },
+      compositesLife: function () {
+        return !!impl.compositesLife;
       },
       impulse: function (nx, ny, strength) {
         queue.push(nx, ny, strength);

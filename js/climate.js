@@ -222,40 +222,63 @@
     };
   }
 
-  function composeLook(lat, lon, date, weather, overrideSky) {
-    const elev = sunElevation(lat, lon, date || new Date());
+  function parseTimeName(value) {
+    const key = String(value || "").toLowerCase();
+    if (key === "dawn") return "dusk";
+    if (key === "day" || key === "dusk" || key === "night") return key;
+    return null;
+  }
+
+  function elevFromHour(hour) {
+    return 62 * Math.cos(((hour - 12) / 12) * Math.PI);
+  }
+
+  function composeLook(lat, lon, date, weather, overrideSky, overrideTime, overrideHour) {
+    let when = date || new Date();
+    let elev = sunElevation(lat, lon, when);
+    const named = parseTimeName(overrideTime);
+    if (named === "day") elev = 48;
+    else if (named === "night") elev = -22;
+    else if (named === "dusk") elev = 0.4;
+    else if (overrideHour != null && !Number.isNaN(+overrideHour)) {
+      elev = elevFromHour(clamp(+overrideHour, 0, 24));
+    }
     const dayness = smoothstep(-7, 7, elev);
     const sky = overrideSky || (weather && weather.sky) || "clear";
-    const clouds = weather && weather.clouds != null ? weather.clouds : sky === "clear" ? 12 : 70;
-    const precip = weather && weather.precip != null ? weather.precip : sky === "rain" ? 0.6 : 0;
-    const windKmh = weather && weather.windKmh != null ? weather.windKmh : 4;
+    const clouds = weather && weather.clouds != null ? weather.clouds : sky === "clear" ? 12 : sky === "cloudy" ? 78 : 55;
+    const precip = weather && weather.precip != null ? weather.precip : sky === "rain" ? 1.2 : 0;
+    const windKmh = weather && weather.windKmh != null ? weather.windKmh : sky === "rain" ? 14 : 4;
     const windDir = weather && weather.windDir != null ? weather.windDir : 90;
 
     let rain = 0;
-    if (sky === "rain") rain = clamp(0.28 + precip * 0.45, 0.28, 1);
-    let fog = sky === "fog" ? 0.72 : sky === "rain" ? 0.18 : 0;
-    if (sky === "cloudy") fog += 0.08;
+    if (sky === "rain") rain = clamp(0.72 + precip * 0.22, 0.72, 1);
+    let fog = sky === "fog" ? 0.92 : sky === "rain" ? 0.28 : 0;
+    if (sky === "cloudy") fog += 0.16;
 
     const dayTint =
       sky === "clear"
-        ? [1.05, 1.02, 0.96]
+        ? [1.2, 1.08, 0.84]
         : sky === "cloudy"
-          ? [0.9, 0.94, 0.97]
+          ? [0.74, 0.82, 0.9]
           : sky === "rain"
-            ? [0.82, 0.88, 0.9]
-            : [0.88, 0.93, 0.96];
-    const nightTint = [0.68, 0.86, 1.0];
+            ? [0.52, 0.64, 0.68]
+            : [0.82, 0.88, 0.86];
+    const nightTint = [0.28, 0.46, 0.95];
     const tint = [
       lerp(nightTint[0], dayTint[0], dayness),
       lerp(nightTint[1], dayTint[1], dayness),
       lerp(nightTint[2], dayTint[2], dayness),
     ];
+    const twilight = Math.exp(-Math.pow((dayness - 0.3) / 0.16, 2));
+    tint[0] = lerp(tint[0], 1.38, twilight * 0.55);
+    tint[1] = lerp(tint[1], 0.58, twilight * 0.4);
+    tint[2] = lerp(tint[2], 0.34, twilight * 0.45);
 
-    let exposure = lerp(0.4, sky === "clear" ? 1.08 : sky === "cloudy" ? 0.92 : 0.8, dayness);
-    if (sky === "fog") exposure *= 0.9;
+    let exposure = lerp(0.22, sky === "clear" ? 1.24 : sky === "cloudy" ? 0.78 : sky === "rain" ? 0.58 : 0.7, dayness);
+    if (sky === "fog") exposure *= 0.82;
 
-    let causticGain = dayness * (sky === "clear" ? 1 : sky === "cloudy" ? 0.32 : 0.12);
-    const haze = clamp(fog * 0.55 + (1 - dayness) * 0.06 + (clouds / 100) * 0.08, 0, 0.7);
+    let causticGain = dayness * (sky === "clear" ? 1.35 : sky === "cloudy" ? 0.16 : 0.05);
+    const haze = clamp(fog * 0.72 + (1 - dayness) * 0.14 + (clouds / 100) * 0.12, 0, 0.88);
     const windAmp = clamp(windKmh / 28, 0, 1.35);
     const from = (windDir * Math.PI) / 180;
     const wind = {
@@ -263,7 +286,7 @@
       y: Math.cos(from) * windAmp * 3.6,
     };
     const ambientMul =
-      (0.62 + 0.5 * dayness) * (1 + windAmp * 0.4) * (sky === "rain" ? 1.18 : 1);
+      (0.55 + 0.6 * dayness) * (1 + windAmp * 0.45) * (sky === "rain" ? 1.35 : 1);
 
     return {
       lat: lat,
@@ -283,6 +306,8 @@
       source: (weather && weather.source) || "default",
       placeSource: "default",
       place: placeLabel(lat, lon),
+      timeOverride: named || (overrideHour != null ? "hour" : null),
+      skyOverride: overrideSky || null,
     };
   }
 
@@ -299,7 +324,9 @@
             ? " · 手动"
             : "";
     const src = look.source === "live" ? "" : look.source === "cache" ? " · 缓存" : " · 离线";
-    return look.place + " · " + sky + " · " + phase + via + src;
+    const preview =
+      (look.skyOverride ? " · 预览天气" : "") + (look.timeOverride ? " · 预览天色" : "");
+    return look.place + " · " + sky + " · " + phase + via + src + preview;
   }
 
   function readCache(lat, lon) {
@@ -335,6 +362,8 @@
     let placeSource = options.placeSource || (placeMode === "manual" ? "manual" : "default");
     let placeName = options.city || "";
     let overrideSky = options.sky || null;
+    let overrideTime = parseTimeName(options.time);
+    let overrideHour = options.hour != null && !Number.isNaN(+options.hour) ? clamp(+options.hour, 0, 24) : null;
     let weather = readCache(lat, lon) || emptyWeather();
     let fetching = false;
     let timer = 0;
@@ -353,10 +382,12 @@
     }
 
     function sample(date) {
-      const look = composeLook(lat, lon, date || new Date(), weather, overrideSky);
+      const look = composeLook(lat, lon, date || new Date(), weather, overrideSky, overrideTime, overrideHour);
       look.placeSource = placeSource;
       look.placeMode = placeMode;
       look.place = placeLabel(lat, lon, placeName);
+      look.timeOverride = overrideTime || (overrideHour != null ? "hour" : null);
+      look.skyOverride = overrideSky || null;
       return look;
     }
 
@@ -451,9 +482,29 @@
         placeName = next.city || "";
         changed = true;
       }
+      let skyChanged = false;
       if (Object.prototype.hasOwnProperty.call(next, "sky")) {
-        overrideSky = next.sky || null;
-        changed = true;
+        const sky = next.sky || null;
+        if (sky !== overrideSky) {
+          overrideSky = sky;
+          changed = true;
+          skyChanged = true;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(next, "time")) {
+        const named = parseTimeName(next.time);
+        if (named !== overrideTime) {
+          overrideTime = named;
+          changed = true;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(next, "hour")) {
+        const hour = next.hour == null || next.hour === "" ? null : clamp(+next.hour, 0, 24);
+        const nextHour = hour != null && !Number.isNaN(hour) ? hour : null;
+        if (nextHour !== overrideHour) {
+          overrideHour = nextHour;
+          changed = true;
+        }
       }
       if (placeMode === "manual") resolveGen += 1;
       if (changed) {
@@ -462,7 +513,7 @@
           if (cached) weather = cached;
         }
         emit();
-        if (moved) fetchWeather();
+        if (moved || (skyChanged && !overrideSky)) fetchWeather();
       }
     }
 
@@ -524,10 +575,10 @@
       return {
         x: Math.random() * cssW,
         y: Math.random() * cssH,
-        len: 7 + Math.random() * 12,
-        vy: 340 + Math.random() * 200,
-        vx: -28 - Math.random() * 36,
-        a: 0.1 + Math.random() * 0.14,
+        len: 12 + Math.random() * 18,
+        vy: 420 + Math.random() * 260,
+        vx: -40 - Math.random() * 50,
+        a: 0.28 + Math.random() * 0.32,
       };
     }
 
@@ -562,36 +613,71 @@
 
       const night = 1 - look.dayness;
       if (night > 0.02) {
-        ctx.fillStyle = "rgba(3, 12, 16, " + (night * 0.24).toFixed(3) + ")";
+        ctx.fillStyle = "rgba(2, 8, 20, " + (night * 0.55).toFixed(3) + ")";
+        ctx.fillRect(0, 0, cssW, cssH);
+        const vg = ctx.createRadialGradient(
+          cssW * 0.5,
+          cssH * 0.42,
+          Math.min(cssW, cssH) * 0.18,
+          cssW * 0.5,
+          cssH * 0.5,
+          Math.max(cssW, cssH) * 0.78
+        );
+        vg.addColorStop(0, "rgba(0,0,0,0)");
+        vg.addColorStop(1, "rgba(0, 2, 10, " + (night * 0.42).toFixed(3) + ")");
+        ctx.fillStyle = vg;
+        ctx.fillRect(0, 0, cssW, cssH);
+        if (night > 0.45) {
+          const mx = cssW * 0.78;
+          const my = cssH * 0.14;
+          const mg = ctx.createRadialGradient(mx, my, 0, mx, my, 70);
+          mg.addColorStop(0, "rgba(230, 236, 248, " + (0.42 * night).toFixed(3) + ")");
+          mg.addColorStop(0.28, "rgba(180, 200, 230, " + (0.14 * night).toFixed(3) + ")");
+          mg.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.fillStyle = mg;
+          ctx.fillRect(mx - 80, my - 80, 160, 160);
+        }
+      }
+      if (look.dayness > 0.12 && look.dayness < 0.55) {
+        const dusk = Math.exp(-Math.pow((look.dayness - 0.3) / 0.16, 2));
+        ctx.fillStyle = "rgba(255, 118, 52, " + (dusk * 0.2).toFixed(3) + ")";
         ctx.fillRect(0, 0, cssW, cssH);
       }
       if (look.haze > 0.02) {
         const g = ctx.createRadialGradient(
           cssW * 0.5,
           cssH * 0.42,
-          Math.min(cssW, cssH) * 0.1,
+          Math.min(cssW, cssH) * 0.08,
           cssW * 0.5,
           cssH * 0.5,
           Math.max(cssW, cssH) * 0.74
         );
-        g.addColorStop(0, "rgba(168, 188, 186, " + (look.haze * 0.07).toFixed(3) + ")");
-        g.addColorStop(1, "rgba(148, 168, 172, " + (look.haze * 0.32).toFixed(3) + ")");
+        const fogA = look.sky === "fog" ? 0.55 : 0.28;
+        g.addColorStop(0, "rgba(176, 192, 190, " + (look.haze * 0.16).toFixed(3) + ")");
+        g.addColorStop(1, "rgba(158, 174, 178, " + (look.haze * fogA).toFixed(3) + ")");
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, cssW, cssH);
       }
       if (drops.length) {
-        ctx.strokeStyle = "rgba(206, 220, 222, 0.5)";
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(214, 228, 232, 0.78)";
+        ctx.lineWidth = 1.35;
         ctx.lineCap = "round";
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
           ctx.globalAlpha = d.a;
           ctx.beginPath();
           ctx.moveTo(d.x, d.y);
-          ctx.lineTo(d.x - d.vx * 0.016, d.y - d.len);
+          ctx.lineTo(d.x - d.vx * 0.018, d.y - d.len);
           ctx.stroke();
         }
         ctx.globalAlpha = 1;
+        ctx.fillStyle = "rgba(210, 224, 228, 0.28)";
+        for (let i = 0; i < drops.length; i += 3) {
+          const d = drops[i];
+          ctx.beginPath();
+          ctx.ellipse(d.x, Math.min(cssH - 4, d.y + 8), 3.2, 1.1, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
 
@@ -627,6 +713,7 @@
     sunElevation,
     skyFromWmo,
     composeLook,
+    parseTimeName,
     lookCaption,
     parseGeoJs,
     parseIpwho,

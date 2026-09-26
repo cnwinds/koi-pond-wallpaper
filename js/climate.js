@@ -655,7 +655,7 @@
         x: 0.09 + clamp(wind.x / 56, -0.07, 0.07),
         /* Always fall down the screen toward the hit. Positive y here is
            how far above the splash the drop starts (project subtracts z). */
-        y: 0.12 + clamp(Math.abs(wind.y) / 70, 0, 0.06),
+        y: 0.14 + clamp(Math.abs(wind.y) / 70, 0, 0.05),
       };
     }
 
@@ -776,7 +776,7 @@
           const alt = clamp(d.z, 0, 1);
           const foreshort = 0.3 + 0.7 * alt;
           const head = projectDrop(d, d.z);
-          const tail = projectDrop(d, Math.min(1, d.z + 0.065 * d.size));
+          const tail = projectDrop(d, Math.min(1, d.z + 0.09 * d.size));
           const dx = head.x - tail.x;
           const dy = head.y - tail.y;
           const len = Math.hypot(dx, dy) || 1;

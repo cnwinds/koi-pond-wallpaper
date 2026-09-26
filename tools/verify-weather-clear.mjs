@@ -74,7 +74,7 @@ function staticChecks() {
   assert(climate.includes("Drop size is ripple-only"), "streaks still scale with drop size", failures);
   assert(water.includes("uniform float uRain"), "WATER_FS missing uRain", failures);
   assert(water.includes("fade that glint"), "rain crests can still shade as white discs", failures);
-  assert(climate.includes("lineWidth = 1.15"), "rain streaks are not a visible hairline", failures);
+  assert(climate.includes("lineWidth = 1.25"), "rain streaks are not a visible hairline", failures);
   assert(!climate.includes("globalAlpha = Math.min(0.16"), "rain streaks are still nearly invisible", failures);
   assert(csproj.includes("<Version>0.3.11</Version>"), "csproj not bumped to 0.3.11", failures);
   return failures;

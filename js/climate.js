@@ -773,7 +773,7 @@
         ctx.lineCap = "butt";
         ctx.lineJoin = "bevel";
         /* Hairline in CSS pixels. Not scaled by drop size, so it cannot become a blob. */
-        ctx.lineWidth = 1.15;
+        ctx.lineWidth = 1.25;
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
           if (d.z < 0.08 || d.z > 0.9) continue;
@@ -790,11 +790,11 @@
           const x1 = tail.x + dx * 0.92;
           const y1 = tail.y + dy * 0.92;
           const g = ctx.createLinearGradient(tail.x, tail.y, x1, y1);
-          g.addColorStop(0, "rgba(186, 204, 214, 0.95)");
-          g.addColorStop(0.7, "rgba(186, 204, 214, 0.62)");
-          g.addColorStop(1, "rgba(186, 204, 214, 0)");
+          g.addColorStop(0, "rgba(198, 214, 222, 1)");
+          g.addColorStop(0.82, "rgba(198, 214, 222, 0.88)");
+          g.addColorStop(1, "rgba(198, 214, 222, 0)");
           ctx.strokeStyle = g;
-          ctx.globalAlpha = Math.min(0.62, 0.28 + fade * 0.48);
+          ctx.globalAlpha = Math.min(0.72, 0.42 + fade * 0.38);
           ctx.beginPath();
           ctx.moveTo(tail.x, tail.y);
           ctx.lineTo(x1, y1);

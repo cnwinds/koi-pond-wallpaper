@@ -74,12 +74,13 @@ function staticChecks() {
   assert(climate.includes("Drop size is ripple-only"), "streaks still scale with drop size", failures);
   assert(water.includes("uniform float uRain"), "WATER_FS missing uRain", failures);
   assert(water.includes("fade that glint"), "rain crests can still shade as white discs", failures);
+  assert(water.includes("tiles the light lines"), "caustics still sample the ripple-grid normal", failures);
   assert(climate.includes("lineWidth = 1.15"), "rain streaks are not a thin glass hairline", failures);
   assert(climate.includes("Frosted glass"), "rain streaks are not the glass-transparent pass", failures);
   assert(!climate.includes("globalAlpha = Math.min(0.72"), "rain streaks are still opaque strokes", failures);
   assert(!climate.includes("globalAlpha = Math.min(0.16"), "rain streaks are still nearly invisible", failures);
   assert(water.includes("soft slope sheen"), "rain rings are not lit after the veil", failures);
-  assert(csproj.includes("<Version>0.3.12</Version>"), "csproj not bumped to 0.3.12", failures);
+  assert(csproj.includes("<Version>0.3.13</Version>"), "csproj not bumped to 0.3.13", failures);
   return failures;
 }
 

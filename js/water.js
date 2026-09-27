@@ -133,7 +133,13 @@ void main() {
   float calm = clamp(uRippleCalm, 0.0, 1.0);
   vec3 n = normalize(vec3((hL - hR) + amb * 4.0, (hD - hU) + amb * 3.0, 0.16));
   n.xy *= mix(1.0, 0.28, calm);
-  vec2 refr = uv + n.xy * mix(0.05, 0.012, calm);
+  /* Sunlight caustics stay on the smooth ambient slope. The ripple buffer is
+     a few hundred 8-bit texels; folding that normal into the caustic UV
+     tiles the light lines after the first splash. */
+  vec3 nSun = normalize(vec3(amb * 4.0, amb * 3.0, 0.16));
+  nSun.xy *= mix(1.0, 0.28, calm);
+  vec2 sunRefr = uv + nSun.xy * mix(0.05, 0.012, calm);
+  vec2 refr = sunRefr;
 
   vec2 d = (refr - 0.5) * vec2(aspect, 1.0);
   float radial = length(d);
@@ -159,8 +165,8 @@ void main() {
   float sunW = clamp(uCaustics, 0.0, 1.0);
   /* Weight, not a switch: causticGain already eases with the weather blend. */
   if (sunW > 0.001) {
-    cau = caustic(refr * vec2(aspect, 1.0) + n.xy * 0.8, uTime);
-    cau2 = caustic(refr.yx * vec2(1.0, aspect) * 0.85 - n.xy * 0.4, uTime * 0.82 + 12.0);
+    cau = caustic(sunRefr * vec2(aspect, 1.0) + nSun.xy * 0.8, uTime);
+    cau2 = caustic(sunRefr.yx * vec2(1.0, aspect) * 0.85 - nSun.xy * 0.4, uTime * 0.82 + 12.0);
     float cauAmt = (0.5 + 0.5 * depth) * uCausticGain * sunW * (1.0 - calm * 0.85);
     floorCol += vec3(0.48, 0.64, 0.40) * (cau * 0.32 + cau2 * 0.18) * cauAmt;
   }

@@ -65,7 +65,7 @@
     city: "",
   };
 
-  const SKY_NAMES = ["clear", "cloudy", "rain", "fog"];
+  const SKY_NAMES = ["clear", "cloudy", "drizzle", "rain", "heavy_rain", "storm", "snow", "fog"];
   const TIME_NAMES = ["day", "dusk", "dawn", "night"];
 
   function clamp(n, a, b) {
@@ -87,6 +87,9 @@
     const key = String(value || "").toLowerCase();
     if (key === "overcast") return "cloudy";
     if (key === "mist") return "fog";
+    if (key === "heavy" || key === "heavyrain" || key === "heavy-rain") return "heavy_rain";
+    if (key === "thunder" || key === "thunderstorm") return "storm";
+    if (key === "flurries") return "snow";
     if (SKY_NAMES.indexOf(key) >= 0) return key;
     return null;
   }
@@ -350,8 +353,8 @@
         if (typeof val === "number") assign({ time: times[clamp(val | 0, 0, 3)] }, "lively");
         else assign({ time: parseTime(val) }, "lively");
       } else if (name === "previewWeather") {
-        const skies = [null, "clear", "cloudy", "rain", "fog"];
-        if (typeof val === "number") assign({ sky: skies[clamp(val | 0, 0, 4)] }, "lively");
+        const skies = [null, "clear", "cloudy", "drizzle", "rain", "heavy_rain", "storm", "snow", "fog"];
+        if (typeof val === "number") assign({ sky: skies[clamp(val | 0, 0, skies.length - 1)] }, "lively");
         else assign({ sky: parseSky(val) }, "lively");
       }
     }

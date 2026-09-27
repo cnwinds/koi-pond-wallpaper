@@ -56,7 +56,7 @@
     "type": "dropdown",
     "value": 0,
     "text": "Weather preview",
-    "help": "Force a sky for testing. Auto uses Open-Meteo (or cache / clear offline).",
-    "items": ["Auto", "Clear", "Cloudy", "Rain", "Fog"]
+    "help": "Force a sky for testing. Auto uses Open-Meteo, including drizzle, heavy rain, storm, and snow.",
+    "items": ["Auto", "Clear", "Cloudy", "Drizzle", "Rain", "Heavy rain", "Storm", "Snow", "Fog"]
   }
 }

@@ -186,20 +186,57 @@
     }
   }
 
-  function skyFromWmo(code, clouds, vis, precip) {
+  function skyFromWmo(code, clouds, vis, precip, snowfall) {
     code = code | 0;
-    if (code === 45 || code === 48 || (vis != null && vis < 800)) return "fog";
-    if (
-      (code >= 51 && code <= 67) ||
-      (code >= 80 && code <= 82) ||
-      (code >= 95 && code <= 99) ||
-      (precip || 0) >= 0.1
-    ) {
-      return "rain";
-    }
+    precip = +precip || 0;
+    snowfall = +snowfall || 0;
+    if (code === 95 || code === 96 || code === 99) return "storm";
+    if (code === 65 || code === 82 || code === 67) return "heavy_rain";
+    if (code === 61 || code === 63 || code === 66 || code === 80 || code === 81) return "rain";
+    if (code === 51 || code === 53 || code === 55 || code === 56 || code === 57) return "drizzle";
+    if (code === 77 || code === 85 || code === 86 || (code >= 71 && code <= 75)) return "snow";
+    if (snowfall > 0.05 && precip < 0.3) return "snow";
+    if (code === 45 || code === 48) return "fog";
+    if (vis != null && vis < 800 && precip < 0.1 && snowfall <= 0.05 && code < 51) return "fog";
+    if (precip >= 8) return "heavy_rain";
+    if (precip >= 1.2) return "rain";
+    if (precip >= 0.1) return "drizzle";
     if (code >= 3 || (clouds || 0) >= 55) return "cloudy";
     if (code === 2 || (clouds || 0) >= 40) return "cloudy";
     return "clear";
+  }
+
+  function precipKind(sky) {
+    if (sky === "snow") return "snow";
+    if (sky === "drizzle" || sky === "rain" || sky === "heavy_rain" || sky === "storm") return "rain";
+    return "none";
+  }
+
+  /* Daytime targets. `rain` is the water-shader wetness (v0.3.12 glass rain
+     stays the middle rung). `fall` is how many streaks or flakes to draw. */
+  function skyProfile(sky) {
+    if (sky === "drizzle") {
+      return { rain: 0.3, fall: 0.42, fog: 0.08, exp: 1.04, tint: [0.9, 0.97, 0.99], cau: 0.32, wind: 8, clouds: 58, amb: 1.12 };
+    }
+    if (sky === "rain") {
+      return { rain: 0.72, fall: 0.72, fog: 0.2, exp: 0.9, tint: [0.8, 0.9, 0.92], cau: 0.05, wind: 14, clouds: 70, amb: 1.35 };
+    }
+    if (sky === "heavy_rain") {
+      return { rain: 0.92, fall: 1.2, fog: 0.3, exp: 0.74, tint: [0.62, 0.74, 0.82], cau: 0.03, wind: 22, clouds: 88, amb: 1.5 };
+    }
+    if (sky === "storm") {
+      return { rain: 1, fall: 1.55, fog: 0.42, exp: 0.62, tint: [0.5, 0.62, 0.74], cau: 0.02, wind: 34, clouds: 96, amb: 1.75 };
+    }
+    if (sky === "snow") {
+      return { rain: 0, fall: 0.9, fog: 0.16, exp: 1.04, tint: [0.86, 0.94, 1.06], cau: 0.1, wind: 10, clouds: 70, amb: 0.82 };
+    }
+    if (sky === "fog") {
+      return { rain: 0, fall: 0, fog: 0.92, exp: 0.68, tint: [0.8, 0.86, 0.84], cau: 0.05, wind: 3, clouds: 90, amb: 0.9 };
+    }
+    if (sky === "cloudy") {
+      return { rain: 0, fall: 0, fog: 0.16, exp: 0.74, tint: [0.72, 0.8, 0.88], cau: 0.16, wind: 8, clouds: 78, amb: 1 };
+    }
+    return { rain: 0, fall: 0, fog: 0, exp: 1.06, tint: [1.04, 1.06, 0.96], cau: 1.15, wind: 4, clouds: 12, amb: 1 };
   }
 
   function sunElevation(latDeg, lonDeg, date) {
@@ -229,6 +266,7 @@
       clouds: 18,
       precip: 0,
       vis: 20000,
+      snowfall: 0,
       windKmh: 4,
       windDir: 90,
       source: "default",
@@ -259,24 +297,32 @@
     }
     const dayness = smoothstep(-7, 7, elev);
     const sky = overrideSky || (weather && weather.sky) || "clear";
-    const clouds = weather && weather.clouds != null ? weather.clouds : sky === "clear" ? 12 : sky === "cloudy" ? 78 : 55;
-    const precip = weather && weather.precip != null ? weather.precip : sky === "rain" ? 1.2 : 0;
-    const windKmh = weather && weather.windKmh != null ? weather.windKmh : sky === "rain" ? 14 : 4;
+    const prof = skyProfile(sky);
+    const live = !overrideSky && weather && weather.windKmh != null;
+    const clouds = live && weather.clouds != null ? weather.clouds : prof.clouds;
+    const precip = live && weather.precip != null ? weather.precip : 0;
+    const snowfall = live && weather.snowfall != null ? weather.snowfall : 0;
+    const windKmh = live ? weather.windKmh : prof.wind;
     const windDir = weather && weather.windDir != null ? weather.windDir : 90;
 
-    let rain = 0;
-    if (sky === "rain") rain = clamp(0.72 + precip * 0.22, 0.72, 1);
-    let fog = sky === "fog" ? 0.92 : sky === "rain" ? 0.2 : 0;
-    if (sky === "cloudy") fog += 0.16;
-
-    const dayTint =
-      sky === "clear"
-        ? [1.04, 1.06, 0.96]
-        : sky === "cloudy"
-          ? [0.72, 0.8, 0.88]
-          : sky === "rain"
-            ? [0.8, 0.9, 0.92]
-            : [0.8, 0.86, 0.84];
+    let scale = 1;
+    if (live) {
+      if (sky === "drizzle") scale = clamp(0.8 + precip * 0.45, 0.75, 1.4);
+      else if (sky === "rain") scale = clamp(0.9 + precip * 0.05, 0.9, 1.2);
+      else if (sky === "heavy_rain") scale = clamp(0.92 + precip * 0.02, 0.92, 1.25);
+      else if (sky === "storm") scale = clamp(0.95 + precip * 0.012, 0.95, 1.2);
+      else if (sky === "snow") scale = clamp(0.75 + snowfall * 0.4, 0.7, 1.45);
+    }
+    let rain = prof.rain;
+    let fall = prof.fall * scale;
+    if (sky === "rain") {
+      rain = clamp(0.72 + precip * 0.22, 0.72, 1);
+      fall = rain;
+    } else if (sky !== "snow") {
+      rain = clamp(prof.rain * (live ? scale : 1), 0, 1);
+    }
+    let fog = prof.fog;
+    const dayTint = prof.tint;
     const nightTint = [0.3, 0.48, 0.98];
     const tint = [
       lerp(nightTint[0], dayTint[0], dayness),
@@ -288,10 +334,10 @@
     tint[1] = lerp(tint[1], 0.78, twilight * 0.18);
     tint[2] = lerp(tint[2], 0.62, twilight * 0.2);
 
-    let exposure = lerp(0.32, sky === "clear" ? 1.06 : sky === "cloudy" ? 0.74 : sky === "rain" ? 0.9 : 0.68, dayness);
+    let exposure = lerp(0.32, prof.exp, dayness);
     if (sky === "fog") exposure *= 0.82;
 
-    let causticGain = dayness * (sky === "clear" ? 1.15 : sky === "cloudy" ? 0.16 : 0.05);
+    let causticGain = dayness * prof.cau;
     const haze = clamp(fog * 0.72 + (1 - dayness) * 0.14 + (clouds / 100) * 0.12, 0, 0.88);
     const windAmp = clamp(windKmh / 28, 0, 1.35);
     const from = (windDir * Math.PI) / 180;
@@ -299,8 +345,7 @@
       x: -Math.sin(from) * windAmp * 5.5,
       y: Math.cos(from) * windAmp * 3.6,
     };
-    const ambientMul =
-      (0.55 + 0.6 * dayness) * (1 + windAmp * 0.45) * (sky === "rain" ? 1.35 : 1);
+    const ambientMul = (0.55 + 0.6 * dayness) * (1 + windAmp * 0.45) * prof.amb;
 
     return {
       lat: lat,
@@ -309,6 +354,8 @@
       dayness: dayness,
       sky: sky,
       rain: rain,
+      fall: fall,
+      kind: precipKind(sky),
       fog: fog,
       haze: haze,
       exposure: exposure,
@@ -327,8 +374,17 @@
 
   function lookCaption(look) {
     const phase = look.dayness > 0.82 ? "昼" : look.dayness > 0.18 ? "晨昏" : "夜";
-    const sky =
-      look.sky === "clear" ? "晴" : look.sky === "cloudy" ? "阴" : look.sky === "rain" ? "雨" : "雾";
+    const skyNames = {
+      clear: "晴",
+      cloudy: "阴",
+      drizzle: "小雨",
+      rain: "中雨",
+      heavy_rain: "大雨",
+      storm: "暴雨",
+      snow: "雪",
+      fog: "雾",
+    };
+    const sky = skyNames[look.sky] || "晴";
     const via =
       look.placeSource === "geo"
         ? " · 定位"
@@ -396,6 +452,7 @@
       return {
         dayness: look.dayness,
         rain: look.rain,
+        fall: look.fall || 0,
         fog: look.fog,
         haze: look.haze,
         exposure: look.exposure,
@@ -413,6 +470,7 @@
       const out = Object.assign({}, look);
       out.dayness = b.dayness;
       out.rain = b.rain;
+      out.fall = b.fall;
       out.fog = b.fog;
       out.haze = b.haze;
       out.exposure = b.exposure;
@@ -431,6 +489,7 @@
       const tau = calm ? 0.22 : rampTau;
       blend.dayness = approach(blend.dayness, target.dayness, dt, tau);
       blend.rain = approach(blend.rain, target.rain, dt, tau);
+      blend.fall = approach(blend.fall || 0, target.fall || 0, dt, tau);
       blend.fog = approach(blend.fog, target.fog, dt, tau);
       blend.haze = approach(blend.haze, target.haze, dt, tau);
       blend.exposure = approach(blend.exposure, target.exposure, dt, tau);
@@ -463,9 +522,16 @@
       if (!json || !json.current) return;
       const cur = json.current;
       weather = {
-        sky: skyFromWmo(cur.weather_code, cur.cloud_cover, cur.visibility, cur.precipitation),
+        sky: skyFromWmo(
+          cur.weather_code,
+          cur.cloud_cover,
+          cur.visibility,
+          Math.max(+cur.precipitation || 0, +cur.rain || 0),
+          cur.snowfall
+        ),
         clouds: cur.cloud_cover != null ? cur.cloud_cover : 30,
-        precip: cur.precipitation != null ? cur.precipitation : 0,
+        precip: Math.max(+cur.precipitation || 0, +cur.rain || 0),
+        snowfall: cur.snowfall != null ? cur.snowfall : 0,
         vis: cur.visibility != null ? cur.visibility : 20000,
         windKmh: cur.wind_speed_10m != null ? cur.wind_speed_10m : 4,
         windDir: cur.wind_direction_10m != null ? cur.wind_direction_10m : 90,
@@ -490,7 +556,7 @@
         lat.toFixed(4) +
         "&longitude=" +
         lon.toFixed(4) +
-        "&current=weather_code,cloud_cover,visibility,wind_speed_10m,wind_direction_10m,precipitation,is_day" +
+        "&current=weather_code,cloud_cover,visibility,wind_speed_10m,wind_direction_10m,precipitation,rain,snowfall,is_day" +
         "&timezone=auto";
       const ctrl = typeof AbortController === "function" ? new AbortController() : null;
       const to = global.setTimeout(function () {
@@ -650,45 +716,63 @@
 
     function stormSlant(look) {
       const wind = look && look.wind ? look.wind : { x: -4, y: 3.2 };
+      const sky = look && look.sky;
+      const snow = sky === "snow";
+      const storm = sky === "storm";
+      const heavy = sky === "heavy_rain";
+      const xScale = storm ? 2.15 : heavy ? 1.35 : snow ? 2.4 : 1;
+      const xClamp = storm ? 0.04 : snow ? 0.05 : 0.01;
+      /* Positive y is how far above the splash the drop starts. Snow drifts
+         more sideways and falls a shorter screen distance. */
+      const yBase = snow ? 0.046 : 0.1;
+      const yExtra = storm ? 0.032 : heavy ? 0.02 : 0.015;
       return {
-        /* Lateral drift stays small so the fall reads steep, not a shallow streak. */
-        x: 0.026 + clamp(wind.x / 110, -0.01, 0.01),
-        /* Always fall down the screen toward the hit. Positive y here is
-           how far above the splash the drop starts (project subtracts z). */
-        y: 0.1 + clamp(Math.abs(wind.y) / 140, 0, 0.015),
+        x: 0.026 * xScale + clamp(wind.x / (storm ? 75 : 110), -xClamp, xClamp),
+        y: yBase + clamp(Math.abs(wind.y) / 140, 0, yExtra),
       };
     }
 
+    function fallSpeed(kind, sky) {
+      if (kind === "snow") return 0.42 + Math.random() * 0.36;
+      if (sky === "drizzle") return 2.5 + Math.random() * 0.6;
+      if (sky === "storm") return 4.5 + Math.random() * 1.05;
+      return 3.4 + Math.random() * 0.9;
+    }
+
     function spawnDrop(fromSky, look) {
+      const kind = precipKind(look.sky);
       const slant = stormSlant(look);
       const spread = 0.92 + Math.random() * 0.16;
       return {
         tx: Math.random() * cssW,
         ty: Math.random() * cssH,
         z: fromSky ? 1 : Math.random(),
-        vz: 3.4 + Math.random() * 0.9,
+        vz: fallSpeed(kind, look.sky),
         size: 0.68 + Math.random() * 0.74,
         slantX: slant.x * spread,
         slantY: slant.y * spread,
         a: 0.28 + Math.random() * 0.18,
         phase: Math.random() * Math.PI * 2,
-        flickerHz: 0.85 + Math.random() * 1.35,
+        flickerHz: kind === "snow" ? 0.35 + Math.random() * 0.45 : 0.85 + Math.random() * 1.35,
+        kind: kind,
       };
     }
 
     function recycleDrop(d, look) {
+      const kind = precipKind(look.sky);
       const slant = stormSlant(look);
       const spread = 0.92 + Math.random() * 0.16;
       d.tx = Math.random() * cssW;
       d.ty = Math.random() * cssH;
       d.z = 0.82 + Math.random() * 0.18;
-      d.vz = 3.4 + Math.random() * 0.9;
+      d.vz = fallSpeed(kind, look.sky);
       d.size = 0.68 + Math.random() * 0.74;
       d.slantX = slant.x * spread;
       d.slantY = slant.y * spread;
       d.a = 0.28 + Math.random() * 0.18;
       d.phase = Math.random() * Math.PI * 2;
-      d.flickerHz = 0.85 + Math.random() * 1.35;
+      d.flickerHz = kind === "snow" ? 0.35 + Math.random() * 0.45 : 0.85 + Math.random() * 1.35;
+      d.kind = kind;
     }
 
     function projectDrop(d, z) {
@@ -702,8 +786,8 @@
 
     function tick(dt, target, quality, water, calm) {
       const look = stepBlend(target, dt, calm);
-      const rainAmt = look.rain || 0;
-      const want = calm || rainAmt < 0.05 ? 0 : Math.round((quality.rainStreaks || 0) * rainAmt);
+      const fallAmt = look.fall != null ? look.fall : look.rain || 0;
+      const want = calm || fallAmt < 0.05 ? 0 : Math.round((quality.rainStreaks || 0) * fallAmt);
       while (drops.length < want) drops.push(spawnDrop(true, look));
       while (drops.length > want) drops.pop();
       for (let i = 0; i < drops.length; i++) {
@@ -713,9 +797,16 @@
         if (d.z <= 0) {
           if (!calm && water) {
             /* Size changes how hard the ring is pushed, not a drawn drop body.
-               The kernel stays tight so a large drop is not a white disc. */
-            const mag = 0.06 + d.size * 0.11;
-            const rad = 7200;
+               Rain kernels stay tight so a large drop is not a white disc.
+               Snow is a softer, smaller push. */
+            let mag = 0.06 + d.size * 0.11;
+            let rad = 7200;
+            if (d.kind === "snow") {
+              mag = 0.028 + Math.min(d.size, 1.1) * 0.02;
+              rad = 2600;
+            } else if (look.sky === "drizzle") mag *= 0.4;
+            else if (look.sky === "heavy_rain") mag *= 1.2;
+            else if (look.sky === "storm") mag *= 1.35;
             water.impulse(d.tx / cssW, d.ty / cssH, mag, rad);
           }
           recycleDrop(d, look);
@@ -757,6 +848,23 @@
       canvas.style.visibility = "visible";
     }
 
+    function drawFlake(d) {
+      if (d.z < 0.04 || d.z > 0.96) return;
+      const wave = Math.sin(d.phase || 0);
+      const fade = 0.55 + 0.45 * (wave > 0 ? wave * wave : 0);
+      const p = projectDrop(d, d.z);
+      const wob = Math.sin((d.phase || 0) + d.tx * 0.02) * 9;
+      const x = p.x + wob;
+      const y = p.y;
+      if (x < -8 || y < -8 || x > cssW + 8 || y > cssH + 8) return;
+      const rad = 1.35 + Math.min(d.size, 1.15) * 0.7;
+      ctx.globalAlpha = Math.min(0.5, 0.22 + fade * 0.22);
+      ctx.fillStyle = "rgba(214, 228, 236, 0.95)";
+      ctx.beginPath();
+      ctx.arc(x, y, rad, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     function render(look) {
       if (!ctx) return;
       /* Airborne streaks only. Impacts are ripples in the water sim —
@@ -773,10 +881,14 @@
         ctx.lineCap = "butt";
         ctx.lineJoin = "bevel";
         /* Frosted glass shaft in CSS pixels. Hairline, not scaled by drop size.
-           Easy to miss until you look; never a bright white stroke. */
-        ctx.lineWidth = 1.15;
+           Easy to miss until you look; never a bright white stroke.
+           Middle rain stays lineWidth = 1.15. Heavier skies only thicken a little. */
         for (let i = 0; i < drops.length; i++) {
           const d = drops[i];
+          if (d.kind === "snow") {
+            drawFlake(d);
+            continue;
+          }
           if (d.z < 0.08 || d.z > 0.9) continue;
           const wave = Math.sin(d.phase || 0);
           const fade = wave > 0 ? wave * wave : 0;
@@ -790,12 +902,33 @@
           if (len < 12) continue;
           const x1 = tail.x + dx * 0.92;
           const y1 = tail.y + dy * 0.92;
+          const sky = look.sky;
+          ctx.lineWidth = 1.15;
+          let cap = 0.44;
+          let floor = 0.2;
+          let gain = 0.26;
+          if (sky === "drizzle") {
+            ctx.lineWidth = 1.05;
+            cap = 0.32;
+            floor = 0.12;
+            gain = 0.16;
+          } else if (sky === "heavy_rain") {
+            ctx.lineWidth = 1.25;
+            cap = 0.5;
+            floor = 0.22;
+            gain = 0.28;
+          } else if (sky === "storm") {
+            ctx.lineWidth = 1.45;
+            cap = 0.55;
+            floor = 0.24;
+            gain = 0.3;
+          }
           const g = ctx.createLinearGradient(tail.x, tail.y, x1, y1);
           g.addColorStop(0, "rgba(186, 208, 216, 1)");
           g.addColorStop(0.78, "rgba(186, 208, 216, 0.75)");
           g.addColorStop(1, "rgba(186, 208, 216, 0)");
           ctx.strokeStyle = g;
-          ctx.globalAlpha = Math.min(0.44, 0.2 + fade * 0.26);
+          ctx.globalAlpha = Math.min(cap, floor + fade * gain);
           ctx.beginPath();
           ctx.moveTo(tail.x, tail.y);
           ctx.lineTo(x1, y1);

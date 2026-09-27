@@ -102,7 +102,11 @@ internal sealed class TrayHost : Form
         weatherMenu.DropDownItems.Add("自动（实时天气） / Auto", null, (_, _) => _host.PreviewFromTray(null, false, null, true));
         weatherMenu.DropDownItems.Add("晴 / Clear", null, (_, _) => _host.PreviewFromTray(null, false, "clear", true));
         weatherMenu.DropDownItems.Add("阴 / Cloudy", null, (_, _) => _host.PreviewFromTray(null, false, "cloudy", true));
-        weatherMenu.DropDownItems.Add("雨 / Rain", null, (_, _) => _host.PreviewFromTray(null, false, "rain", true));
+        weatherMenu.DropDownItems.Add("小雨 / Drizzle", null, (_, _) => _host.PreviewFromTray(null, false, "drizzle", true));
+        weatherMenu.DropDownItems.Add("中雨 / Rain", null, (_, _) => _host.PreviewFromTray(null, false, "rain", true));
+        weatherMenu.DropDownItems.Add("大雨 / Heavy rain", null, (_, _) => _host.PreviewFromTray(null, false, "heavy_rain", true));
+        weatherMenu.DropDownItems.Add("暴雨 / Storm", null, (_, _) => _host.PreviewFromTray(null, false, "storm", true));
+        weatherMenu.DropDownItems.Add("雪 / Snow", null, (_, _) => _host.PreviewFromTray(null, false, "snow", true));
         weatherMenu.DropDownItems.Add("雾 / Fog", null, (_, _) => _host.PreviewFromTray(null, false, "fog", true));
         menu.Items.Add(weatherMenu);
 

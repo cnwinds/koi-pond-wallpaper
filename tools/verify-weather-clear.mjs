@@ -80,7 +80,9 @@ function staticChecks() {
   assert(!climate.includes("globalAlpha = Math.min(0.72"), "rain streaks are still opaque strokes", failures);
   assert(!climate.includes("globalAlpha = Math.min(0.16"), "rain streaks are still nearly invisible", failures);
   assert(water.includes("soft slope sheen"), "rain rings are not lit after the veil", failures);
-  assert(csproj.includes("<Version>0.3.14</Version>"), "csproj not bumped to 0.3.14", failures);
+  assert(climate.includes("six-fold hex flake"), "snow is missing hexagonal flakes", failures);
+  assert(climate.includes("snowOrdinal < 2"), "hex flakes are not a minority of snow", failures);
+  assert(csproj.includes("<Version>0.3.15</Version>"), "csproj not bumped to 0.3.15", failures);
   return failures;
 }
 

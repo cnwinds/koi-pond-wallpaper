@@ -182,9 +182,9 @@ void main() {
   water += vec3(0.55, 0.7, 0.8) * smoothstep(0.05, 0.24, abs(h)) * crestLift;
   /* Whole-pond lift so rain is not a black sheet. Slope light catches the
      ring, and (1-crest) keeps the flat landing from turning into a white disc. */
-  water += vec3(0.028, 0.04, 0.04) * rainW;
-  float slope = smoothstep(0.1, 0.62, length(n.xy));
-  water += vec3(0.045, 0.07, 0.062) * slope * rainW * (1.0 - crest);
+  water += vec3(0.05, 0.072, 0.068) * rainW;
+  float slope = smoothstep(0.08, 0.5, length(n.xy));
+  water += vec3(0.085, 0.13, 0.11) * slope * rainW * (1.0 - crest);
 
   float edge = smoothstep(0.46, 0.72, max(abs(uv.x - 0.5), abs(uv.y - 0.5)));
   water = mix(water, mix(vec3(0.01, 0.02, 0.05), vec3(0.045, 0.07, 0.05), uDayness), edge * 0.42);
@@ -233,6 +233,11 @@ void main() {
     float dusk = exp(-pow((uDayness - 0.3) / 0.16, 2.0));
     water += vec3(0.32, 0.12, 0.04) * dusk * 0.16 * uExposure;
   }
+
+  /* After the veil, a soft slope sheen keeps faint rain rings readable.
+     Flat crests stay dark so landings do not become white discs. */
+  float ring = smoothstep(0.1, 0.55, length(n.xy));
+  water += vec3(0.05, 0.08, 0.07) * ring * rainW * (1.0 - crest);
 
   fragColor = vec4(water, 1.0);
 }`;

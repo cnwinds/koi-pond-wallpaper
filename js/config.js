@@ -64,9 +64,8 @@
       power: "low-power",
       maxLongEdge: 960,
       detail: "ultra",
-      /* Light lines are a baked tile on the life overlay, not shader
-         sines. low stays off. Life stays overlaid: dirty-rect uploads
-         measured 40–70 ms. */
+      /* Filament tile on the life overlay, not shader sines and not
+         soft oval stamps. low stays off. Life stays overlaid. */
       caustics: true,
       lifeOverlay: true,
     },

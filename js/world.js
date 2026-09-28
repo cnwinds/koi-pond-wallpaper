@@ -688,10 +688,56 @@
       return 24;
     }
 
-    /* One seamless tile. Only the bright ridges keep alpha, so the rest
-       of the overlay stays transparent and the water canvas shows through. */
+    /* Seamless filament tile. Bright pixels sit on irregular cell edges,
+       not on the peaks of summed sines (those peaks read as soft ovals). */
     function causticTile() {
-      const S = 128;
+      const S = 256;
+      function hash(i, j, k) {
+        const n = Math.sin(i * 127.1 + j * 311.7 + k * 74.7) * 43758.5453;
+        return n - Math.floor(n);
+      }
+      function makeSites(count, salt) {
+        const list = [];
+        for (let i = 0; i < count; i++) {
+          let x = hash(i, salt, 1);
+          let y = hash(i, salt, 2);
+          if (hash(i, salt, 3) < 0.4) {
+            const clump = (hash(i, salt, 4) * 3) | 0;
+            x = (x * 0.28 + hash(clump, salt, 5) * 0.72) % 1;
+            y = (y * 0.28 + hash(clump, salt, 6) * 0.72) % 1;
+          }
+          list.push({ x: x, y: y, b: 0.55 + hash(i, salt, 7) * 0.45 });
+        }
+        return list;
+      }
+      const coarse = makeSites(11, 1);
+      const fine = makeSites(6, 9);
+      function nearest(uu, vv, sites) {
+        let d1 = 1e9;
+        let d2 = 1e9;
+        let b1 = 1;
+        for (let s = 0; s < sites.length; s++) {
+          const site = sites[s];
+          let dx = uu - site.x;
+          let dy = vv - site.y;
+          if (dx > 0.5) dx -= 1;
+          else if (dx < -0.5) dx += 1;
+          if (dy > 0.5) dy -= 1;
+          else if (dy < -0.5) dy += 1;
+          const dist = Math.hypot(dx, dy);
+          if (dist < d1) {
+            d2 = d1;
+            d1 = dist;
+            b1 = site.b;
+          } else if (dist < d2) d2 = dist;
+        }
+        return { edge: d2 - d1, b: b1 };
+      }
+      function filament(edge, width) {
+        if (edge >= width) return 0;
+        const t = 1 - edge / width;
+        return t * t;
+      }
       const c = document.createElement("canvas");
       c.width = S;
       c.height = S;
@@ -699,20 +745,23 @@
       const img = g.createImageData(S, S);
       const d = img.data;
       for (let y = 0; y < S; y++) {
+        const v0 = y / S;
         for (let x = 0; x < S; x++) {
-          const a = Math.sin(((x * 2) / S + (y * 3) / S) * TWO_PI);
-          const b = Math.sin(((x * 3) / S - (y * 2) / S) * TWO_PI + 1.1);
-          const cyc = Math.sin(((x * 1) / S + (y * 2) / S) * TWO_PI);
-          let lines = 0.5 + 0.28 * a + 0.16 * b + 0.1 * cyc;
-          let ridge = (lines - 0.82) / 0.18;
-          if (ridge < 0) ridge = 0;
-          else if (ridge > 1) ridge = 1;
-          ridge = ridge * ridge * ridge;
+          const uu = x / S;
+          const vv = v0;
+          const wobble = 0.82 + 0.18 * Math.sin((uu * 2 + vv * 5) * TWO_PI);
+          const ea = nearest(uu, vv, coarse);
+          const eb = nearest(uu, vv, fine);
+          let a =
+            filament(ea.edge, 0.0065 * wobble) * (0.82 + 0.18 * ea.b) +
+            filament(eb.edge, 0.004 * wobble) * (0.35 + 0.15 * eb.b);
+          if (a > 1) a = 1;
+          if (a < 0.06) a = 0;
           const i = (y * S + x) * 4;
-          d[i] = (186 * ridge) | 0;
-          d[i + 1] = (214 * ridge) | 0;
-          d[i + 2] = (156 * ridge) | 0;
-          d[i + 3] = (255 * ridge) | 0;
+          d[i] = 214;
+          d[i + 1] = 236;
+          d[i + 2] = 186;
+          d[i + 3] = (255 * a) | 0;
         }
       }
       g.putImageData(img, 0, 0);
@@ -726,29 +775,19 @@
       if (gain < 0.08) return;
       if (!cauPattern) cauPattern = ctx.createPattern(bakedCaustics, "repeat");
       if (!cauPattern) return;
-      /* Two large repeats. A single small tile read as a tight web. */
-      const layers = [
-        { scale: 2.8, alpha: 0.48, vx: 16, vy: -9 },
-        { scale: 1.65, alpha: 0.28, vx: -11, vy: 7 },
-      ];
+      /* One crisp repeat. Smoothing the tile turned thin edges into oval blurs. */
+      const scale = 3.2;
+      const span = 256 * scale;
+      const ox = ((clock * 14) % span + span) % span;
+      const oy = ((-clock * 8) % span + span) % span;
       ctx.save();
+      ctx.imageSmoothingEnabled = false;
       ctx.globalCompositeOperation = "screen";
+      ctx.globalAlpha = Math.min(0.78, gain * 0.68);
+      ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
+      ctx.translate(ox / scale, oy / scale);
       ctx.fillStyle = cauPattern;
-      for (let i = 0; i < layers.length; i++) {
-        const layer = layers[i];
-        const span = 128 * layer.scale;
-        const ox = ((clock * layer.vx) % span + span) % span;
-        const oy = ((clock * layer.vy) % span + span) % span;
-        ctx.setTransform(dpr * layer.scale, 0, 0, dpr * layer.scale, 0, 0);
-        ctx.globalAlpha = Math.min(0.62, gain * layer.alpha);
-        ctx.translate(ox / layer.scale, oy / layer.scale);
-        ctx.fillRect(
-          -ox / layer.scale - 2,
-          -oy / layer.scale - 2,
-          cssW / layer.scale + 4,
-          cssH / layer.scale + 4
-        );
-      }
+      ctx.fillRect(-ox / scale - 2, -oy / scale - 2, cssW / scale + 4, cssH / scale + 4);
       ctx.restore();
     }
 

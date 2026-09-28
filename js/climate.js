@@ -444,6 +444,8 @@
     let dpr = 1;
     let dripT = 0;
     const drops = [];
+    /* Two of every nine snow particles are hex flakes; the rest stay soft dots. */
+    let snowOrdinal = 0;
     const listeners = [];
     let blend = null;
     let rampTau = options.rampSec != null ? clamp(+options.rampSec, 0.25, 20) / 2.8 : RAMP_SEC / 2.8;
@@ -739,6 +741,12 @@
       return 3.4 + Math.random() * 0.9;
     }
 
+    function snowShape(kind) {
+      if (kind !== "snow") return "dot";
+      snowOrdinal = (snowOrdinal + 1) % 9;
+      return snowOrdinal < 2 ? "hex" : "dot";
+    }
+
     function spawnDrop(fromSky, look) {
       const kind = precipKind(look.sky);
       const slant = stormSlant(look);
@@ -753,8 +761,10 @@
         slantY: slant.y * spread,
         a: 0.28 + Math.random() * 0.18,
         phase: Math.random() * Math.PI * 2,
+        rot: Math.random() * Math.PI,
         flickerHz: kind === "snow" ? 0.35 + Math.random() * 0.45 : 0.85 + Math.random() * 1.35,
         kind: kind,
+        shape: snowShape(kind),
       };
     }
 
@@ -771,8 +781,10 @@
       d.slantY = slant.y * spread;
       d.a = 0.28 + Math.random() * 0.18;
       d.phase = Math.random() * Math.PI * 2;
+      d.rot = Math.random() * Math.PI;
       d.flickerHz = kind === "snow" ? 0.35 + Math.random() * 0.45 : 0.85 + Math.random() * 1.35;
       d.kind = kind;
+      d.shape = snowShape(kind);
     }
 
     function projectDrop(d, z) {
@@ -848,6 +860,53 @@
       canvas.style.visibility = "visible";
     }
 
+    function hexPath(rad) {
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (Math.PI / 3) * i - Math.PI / 2;
+        const px = Math.cos(a) * rad;
+        const py = Math.sin(a) * rad;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+    }
+
+    function drawHexFlake(x, y, d, fade) {
+      /* Small six-fold hex flake: spokes, short side branches, and a hex
+         outline. Still a few strokes, not a sprite. */
+      const rad = 7.4 + Math.min(Math.max(d.size - 0.68, 0), 0.74) * 4.2;
+      const spin = (d.rot || 0) + (d.phase || 0) * 0.18;
+      const alpha = Math.min(0.6, 0.4 + fade * 0.12 + ((d.a || 0.35) - 0.28) * 0.22);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(spin);
+      ctx.globalAlpha = alpha;
+      ctx.lineJoin = "miter";
+      ctx.lineCap = "round";
+      ctx.strokeStyle = "rgba(244, 248, 252, 0.98)";
+      ctx.lineWidth = 0.75;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (Math.PI / 3) * i - Math.PI / 2;
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+        const t = 0.58;
+        const bx = Math.cos(a) * rad * t;
+        const by = Math.sin(a) * rad * t;
+        const br = rad * 0.22;
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx + Math.cos(a + 1.05) * br, by + Math.sin(a + 1.05) * br);
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx + Math.cos(a - 1.05) * br, by + Math.sin(a - 1.05) * br);
+      }
+      ctx.stroke();
+      ctx.lineWidth = 1.2;
+      hexPath(rad * 0.72);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     function drawFlake(d) {
       if (d.z < 0.04 || d.z > 0.96) return;
       const wave = Math.sin(d.phase || 0);
@@ -856,7 +915,11 @@
       const wob = Math.sin((d.phase || 0) + d.tx * 0.02) * 9;
       const x = p.x + wob;
       const y = p.y;
-      if (x < -8 || y < -8 || x > cssW + 8 || y > cssH + 8) return;
+      if (x < -18 || y < -18 || x > cssW + 18 || y > cssH + 18) return;
+      if (d.shape === "hex") {
+        drawHexFlake(x, y, d, fade);
+        return;
+      }
       const rad = 1.35 + Math.min(d.size, 1.15) * 0.7;
       ctx.globalAlpha = Math.min(0.5, 0.22 + fade * 0.22);
       ctx.fillStyle = "rgba(214, 228, 236, 0.95)";
@@ -956,14 +1019,17 @@
         return drops.map(function (d) {
           const p = projectDrop(d, d.z);
           const wave = Math.sin(d.phase || 0);
+          const wob = d.kind === "snow" ? Math.sin((d.phase || 0) + d.tx * 0.02) * 9 : 0;
           return {
-            x: p.x,
+            x: p.x + wob,
             y: p.y,
             z: d.z,
             tx: d.tx,
             ty: d.ty,
             size: d.size,
             fade: wave > 0 ? wave * wave : 0,
+            kind: d.kind || "rain",
+            shape: d.shape || "dot",
           };
         });
       },

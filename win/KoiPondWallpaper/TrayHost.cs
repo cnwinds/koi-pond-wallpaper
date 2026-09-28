@@ -89,6 +89,14 @@ internal sealed class TrayHost : Form
         menu.Items.Add("投喂 / Feed", null, (_, _) => _host.FeedFromTray());
         menu.Items.Add("显示设置 / Show settings", null, (_, _) => _host.OpenSettingsFromTray());
 
+        var qualityMenu = new ToolStripMenuItem("画质 / Quality");
+        qualityMenu.DropDownOpening += (_, _) => Foreground.Steal(Handle);
+        qualityMenu.DropDownItems.Add("极低 / Ultra low", null, (_, _) => _host.SetQualityFromTray("ultra"));
+        qualityMenu.DropDownItems.Add("低 / Low", null, (_, _) => _host.SetQualityFromTray("low"));
+        qualityMenu.DropDownItems.Add("中 / Medium", null, (_, _) => _host.SetQualityFromTray("mid"));
+        qualityMenu.DropDownItems.Add("高 / High", null, (_, _) => _host.SetQualityFromTray("high"));
+        menu.Items.Add(qualityMenu);
+
         var timeMenu = new ToolStripMenuItem("天色预览 / Light");
         timeMenu.DropDownOpening += (_, _) => Foreground.Steal(Handle);
         timeMenu.DropDownItems.Add("自动（真实时钟） / Auto", null, (_, _) => _host.PreviewFromTray(time: null, hasTime: true, sky: null, hasSky: false));
@@ -124,6 +132,7 @@ internal interface IPondHost
     void FeedFromTray();
     void OpenSettingsFromTray();
     void PreviewFromTray(string? time, bool hasTime, string? sky, bool hasSky);
+    void SetQualityFromTray(string quality);
     void ReattachFromTray();
     void UseLivelyFromTray();
     void ShowWindowPreviewFromTray();

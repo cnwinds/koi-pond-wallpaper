@@ -45,6 +45,13 @@ body {
   opacity: 0;
 }
 
+/* Ultra draws the life canvas in the page so the water pass can skip
+   the full-frame texture upload. low / mid / high stay composited. */
+#pond.is-life-layer #life {
+  opacity: 1;
+  z-index: 1;
+}
+
 #wx {
   z-index: 2;
 }
@@ -248,6 +255,40 @@ body {
 
 #hud.is-hidden {
   display: none;
+}
+
+#perfOverlay {
+  position: fixed;
+  left: 12px;
+  top: 12px;
+  z-index: 8;
+  max-width: min(420px, calc(100vw - 24px));
+  padding: 10px 12px 8px;
+  background: rgba(8, 16, 14, 0.82);
+  color: #e7dfd0;
+  border: 1px solid rgba(231, 223, 208, 0.18);
+  border-radius: 8px;
+  pointer-events: auto;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+#perfOverlay pre {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+#perfOverlay button {
+  margin-right: 8px;
+  font: inherit;
+  font-size: 12px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid rgba(231, 223, 208, 0.28);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -16,8 +16,8 @@
     "type": "dropdown",
     "value": 1,
     "text": "Effects quality",
-    "help": "Ripple resolution, caustics, and pixel density",
-    "items": ["Low", "Medium", "High"]
+    "help": "Ripple resolution, caustics, and pixel density. Ultra low caps the internal framebuffer.",
+    "items": ["Low", "Medium", "High", "Ultra low"]
   },
   "fps": {
     "max": 60,

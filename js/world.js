@@ -748,6 +748,20 @@
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
+
+      /* Ultra shows this canvas above the water, so night has to dim the
+         sprites here. The full shader still tints life for the other tiers. */
+      if (quality && quality.lifeOverlay && look) {
+        const night = 1 - (look.dayness != null ? look.dayness : 1);
+        if (night > 0.04) {
+          ctx.save();
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.globalCompositeOperation = "source-atop";
+          ctx.fillStyle = "rgba(6, 14, 28, " + Math.min(0.62, night * 0.5) + ")";
+          ctx.fillRect(0, 0, cssW, cssH);
+          ctx.restore();
+        }
+      }
     }
 
     return {

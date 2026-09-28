@@ -82,7 +82,56 @@ function staticChecks() {
   assert(water.includes("soft slope sheen"), "rain rings are not lit after the veil", failures);
   assert(climate.includes("six-fold hex flake"), "snow is missing hexagonal flakes", failures);
   assert(climate.includes("snowOrdinal < 2"), "hex flakes are not a minority of snow", failures);
-  assert(csproj.includes("<Version>0.3.15</Version>"), "csproj not bumped to 0.3.15", failures);
+  assert(csproj.includes("<Version>0.3.16</Version>"), "csproj not bumped to 0.3.16", failures);
+  const config = read("js/config.js");
+  const lowPreset = `low: {
+      ripple: 160,
+      dpr: 1,
+      caustics: false,
+      particles: 18,
+      pads: 3,
+      blurShadow: false,
+      ambientWaves: 0.55,
+      spineSlices: 16,
+      rainStreaks: 0,
+      rainDrips: 0.35,
+      lifeDistort: 0.022,
+      power: "low-power",
+    }`;
+  const midPreset = `mid: {
+      ripple: 320,
+      dpr: 1.25,
+      caustics: true,
+      particles: 42,
+      pads: 5,
+      blurShadow: true,
+      ambientWaves: 1,
+      spineSlices: 24,
+      rainStreaks: 72,
+      rainDrips: 1.6,
+      lifeDistort: 0.038,
+      power: "low-power",
+    }`;
+  const highPreset = `high: {
+      ripple: 512,
+      dpr: 2,
+      caustics: true,
+      particles: 72,
+      pads: 7,
+      blurShadow: true,
+      ambientWaves: 1.15,
+      spineSlices: 32,
+      rainStreaks: 130,
+      rainDrips: 2.4,
+      lifeDistort: 0.048,
+      power: "default",
+    }`;
+  assert(config.includes(lowPreset), "low preset drifted from v0.3.15", failures);
+  assert(config.includes(midPreset), "mid preset drifted from v0.3.15", failures);
+  assert(config.includes(highPreset), "high preset drifted from v0.3.15", failures);
+  assert(config.includes('const QUALITY_NAMES = ["low", "mid", "high", "ultra"]'), "quality order shifted existing tiers", failures);
+  assert(config.includes("maxLongEdge: 960"), "ultra is missing the framebuffer cap", failures);
+  assert(config.includes('detail: "ultra"'), "ultra is missing the cheap shade flag", failures);
   return failures;
 }
 

@@ -115,6 +115,11 @@ internal sealed class AppForm : Form, IPondHost
         Queue(() => SendPondAsync(new PondCommand("preview", time, hasTime, sky, hasSky)));
     }
 
+    public void SetQualityFromTray(string quality)
+    {
+        Queue(() => SendPondAsync(new PondCommand("quality", quality: quality, hasQuality: true)));
+    }
+
     public void ReattachFromTray() => Queue(AttachWallpaperAsync);
 
     public void UseLivelyFromTray()
@@ -380,13 +385,22 @@ internal sealed class AppForm : Form, IPondHost
 
 internal readonly struct PondCommand
 {
-    public PondCommand(string action, string? time = null, bool hasTime = false, string? sky = null, bool hasSky = false)
+    public PondCommand(
+        string action,
+        string? time = null,
+        bool hasTime = false,
+        string? sky = null,
+        bool hasSky = false,
+        string? quality = null,
+        bool hasQuality = false)
     {
         Action = action;
         Time = time;
         HasTime = hasTime;
         Sky = sky;
         HasSky = hasSky;
+        Quality = quality;
+        HasQuality = hasQuality;
     }
 
     public string Action { get; }
@@ -394,6 +408,8 @@ internal readonly struct PondCommand
     public bool HasTime { get; }
     public string? Sky { get; }
     public bool HasSky { get; }
+    public string? Quality { get; }
+    public bool HasQuality { get; }
 
     public string ToJson()
     {
@@ -412,6 +428,7 @@ internal readonly struct PondCommand
                 if (Sky == null) writer.WriteNull("sky");
                 else writer.WriteString("sky", Sky);
             }
+            if (HasQuality && Quality != null) writer.WriteString("quality", Quality);
             writer.WriteEndObject();
         }
         return System.Text.Encoding.UTF8.GetString(stream.ToArray());

@@ -61,6 +61,17 @@
     return Math.max(1, Math.min(raw, want));
   }
 
+  /* low / mid / high have no maxLongEdge, so this returns dprCap() unchanged.
+     ultra shrinks the water and life backing stores after that cap. */
+  function pixelScale() {
+    const dpr = dprCap();
+    const cap = config.preset().maxLongEdge || 0;
+    if (!(cap > 0)) return dpr;
+    const longEdge = Math.max(cssW, cssH) * dpr;
+    if (longEdge <= cap) return dpr;
+    return (cap / longEdge) * dpr;
+  }
+
   function allocCanvas(cv, w, h, force) {
     if (force && cv.width === w && cv.height === h) {
       cv.width = Math.max(1, w - 1);
@@ -73,7 +84,7 @@
     opts = opts || {};
     cssW = Math.max(1, global.innerWidth || document.documentElement.clientWidth);
     cssH = Math.max(1, global.innerHeight || document.documentElement.clientHeight);
-    const dpr = dprCap();
+    const dpr = pixelScale();
     pixelW = Math.max(1, Math.round(cssW * dpr));
     pixelH = Math.max(1, Math.round(cssH * dpr));
     const force = !!opts.forceRealloc;
@@ -98,6 +109,14 @@
       water.setQuality(preset);
       resize({ forceRealloc: true });
     }
+    syncLifeLayer();
+  }
+
+  function syncLifeLayer() {
+    const pond = document.getElementById("pond");
+    if (!pond) return;
+    pond.classList.toggle("is-life-layer", !!config.preset().lifeOverlay);
+    if (water.compositesLife && water.compositesLife()) pond.classList.add("is-composite");
   }
 
   function syncHud() {
@@ -142,13 +161,26 @@
     return config.state.fps;
   }
 
+  function perfOn() {
+    return global.PondPerf && PondPerf.enabled && PondPerf.enabled();
+  }
+
+  function perfSection(name, fn) {
+    if (!perfOn()) return fn();
+    return PondPerf.section(name, fn);
+  }
+
   function drawFrame(dt) {
     dt = Math.min(0.05, Math.max(0, dt || 0.016));
+    if (perfOn()) PondPerf.beginFrame();
     time += dt;
     const preset = config.preset();
-    const target = climate.sample();
     const calm = config.state.reducedMotion;
-    const look = climate.tick(dt, target, preset, water, calm) || target;
+    let look;
+    perfSection("climate", function () {
+      const target = climate.sample();
+      look = climate.tick(dt, target, preset, water, calm) || target;
+    });
     const ambient = (calm ? 0.25 : preset.ambientWaves) * look.ambientMul;
     if (water.setRain) water.setRain(look.rain);
     surfaceCheckT += dt;
@@ -163,11 +195,18 @@
        sunny pattern on in one frame, and wiping the ripple FBO at settle did too. */
     const causticWeight = preset.caustics && !calm ? 1 : 0;
     const rippleCalm = 0;
-    water.update(dt);
-    world.update(dt, water, preset, look);
-    world.render(preset, look);
+    perfSection("ripple", function () {
+      water.update(dt);
+    });
+    perfSection("fishSim", function () {
+      world.update(dt, water, preset, look);
+    });
+    perfSection("fishDraw", function () {
+      world.render(preset, look);
+    });
     const needLife = refreshLife;
     refreshLife = false;
+    const overlayLife = !!preset.lifeOverlay;
     water.render(cssW, cssH, pixelW, pixelH, time, {
       caustics: causticWeight,
       ambient: ambient,
@@ -180,11 +219,32 @@
       rippleCalm: rippleCalm,
       rain: look.rain || 0,
       distort: calm ? preset.lifeDistort * 0.35 : preset.lifeDistort,
-      life: lifeCanvas,
-      refreshLife: needLife,
+      life: overlayLife ? null : lifeCanvas,
+      refreshLife: needLife && !overlayLife,
     });
-    climate.render(look);
-    applyCssGrade(look);
+    perfSection("weather", function () {
+      climate.render(look);
+    });
+    perfSection("ui", function () {
+      applyCssGrade(look);
+    });
+    if (perfOn()) {
+      PondPerf.endFrame({
+        quality: config.state.quality,
+        fish: config.state.fish,
+        simFish: world.fish ? world.fish.length : config.state.fish,
+        css: [cssW, cssH],
+        water: [waterCanvas.width, waterCanvas.height],
+        life: [lifeCanvas.width, lifeCanvas.height],
+        wx: [wxCanvas.width, wxCanvas.height],
+        ripple: preset.ripple,
+        caustics: !!preset.caustics,
+        rainStreaks: preset.rainStreaks,
+        spineSlices: preset.spineSlices,
+        detail: preset.detail || "",
+        maxLongEdge: preset.maxLongEdge || 0,
+      });
+    }
 
     if (config.state.demo) {
       demoT += dt;
@@ -473,6 +533,11 @@
       if (msg.openSettings) openSettings();
       return "ok";
     }
+    if (action === "quality") {
+      if (msg.quality == null) return "bad";
+      config.assign({ quality: msg.quality }, "ui");
+      return "ok";
+    }
     return "unknown";
   }
 
@@ -530,9 +595,7 @@
   bindHud();
   bindHostBridge();
   showHint();
-  if (document.getElementById("pond") && water.compositesLife && water.compositesLife()) {
-    document.getElementById("pond").classList.add("is-composite");
-  }
+  syncLifeLayer();
   climate.start();
   start();
   if (config.state.demo) {

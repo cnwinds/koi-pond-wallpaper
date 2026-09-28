@@ -248,6 +248,113 @@ void main() {
   fragColor = vec4(water, 1.0);
 }`;
 
+  /* Ultra only. Five height taps, no pebble noise, film grain, or caustic
+     calls. low / mid / high keep WATER_FS above. */
+  const WATER_FS_ULTRA = `#version 300 es
+precision mediump float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D uRipple;
+uniform sampler2D uLife;
+uniform vec2 uResolution;
+uniform vec2 uRippleTexel;
+uniform float uTime;
+uniform float uCaustics;
+uniform float uAmbient;
+uniform float uExposure;
+uniform vec3 uTint;
+uniform float uCausticGain;
+uniform float uHaze;
+uniform float uFog;
+uniform float uDayness;
+uniform float uDistort;
+uniform float uHasLife;
+uniform float uRippleCalm;
+uniform float uRain;
+
+float tapH(vec2 uv) {
+  return texture(uRipple, uv).r;
+}
+
+void main() {
+  vec2 uv = vUv;
+  float aspect = uResolution.x / max(uResolution.y, 1.0);
+  vec2 t = uRippleTexel;
+  float hL = tapH(uv - vec2(t.x, 0.0));
+  float hR = tapH(uv + vec2(t.x, 0.0));
+  float hD = tapH(uv - vec2(0.0, t.y));
+  float hU = tapH(uv + vec2(0.0, t.y));
+  float h = tapH(uv) * 2.0 - 1.0;
+
+  float amb = uAmbient * (
+    sin(uv.x * 7.2 + uTime * 0.31) * sin(uv.y * 5.1 - uTime * 0.23) * 0.012 +
+    sin((uv.x * aspect + uv.y) * 3.4 - uTime * 0.17) * 0.008
+  );
+  float calm = clamp(uRippleCalm, 0.0, 1.0);
+  vec3 n = normalize(vec3((hL - hR) + amb * 4.0, (hD - hU) + amb * 3.0, 0.16));
+  n.xy *= mix(1.0, 0.28, calm);
+
+  vec2 d = (uv - 0.5) * vec2(aspect, 1.0);
+  float radial = length(d);
+  float depth = 1.0 - smoothstep(0.05, 0.78, radial);
+  vec3 deep = mix(vec3(0.015, 0.03, 0.07), vec3(0.04, 0.13, 0.14), uDayness);
+  vec3 midc = mix(vec3(0.03, 0.055, 0.12), vec3(0.07, 0.24, 0.24), uDayness);
+  vec3 shallow = mix(vec3(0.05, 0.09, 0.16), vec3(0.12, 0.34, 0.32), uDayness);
+  vec3 floorCol = mix(deep, mix(midc, shallow, depth), 0.86);
+  vec3 water = floorCol * mix(vec3(0.7, 0.82, 1.05), vec3(0.78, 0.96, 0.93), uDayness);
+
+  vec3 L = normalize(mix(vec3(0.2, 0.15, 0.9), vec3(-0.35, 0.48, 0.8), uDayness));
+  vec3 H = normalize(L + vec3(0.0, 0.0, 1.0));
+  float spec = pow(max(dot(n, H), 0.0), 32.0);
+  float crest = smoothstep(0.04, 0.14, abs(h));
+  float rainW = smoothstep(0.12, 0.45, uRain);
+  spec *= mix(1.0, 0.05, rainW);
+  spec *= 1.0 - crest * rainW;
+  water += mix(vec3(0.45, 0.62, 1.0), vec3(0.72, 0.86, 0.8), uDayness) * spec * 0.42;
+  water += vec3(0.05, 0.072, 0.068) * rainW;
+  float slope = smoothstep(0.08, 0.5, length(n.xy));
+  water += vec3(0.085, 0.13, 0.11) * slope * rainW * (1.0 - crest);
+
+  float vig = smoothstep(1.2, 0.22, length((uv - 0.5) * vec2(1.25, 1.12)));
+  water *= 0.72 + 0.28 * vig;
+  water = max(water, mix(vec3(0.012, 0.02, 0.04), vec3(0.05, 0.12, 0.11), uDayness));
+  water *= uTint * uExposure;
+
+  if (uHasLife > 0.5) {
+    vec2 warp = clamp(n.xy * uDistort, vec2(-0.008), vec2(0.008));
+    vec4 lifeC = texture(uLife, uv + warp);
+    vec3 lightT = mix(vec3(0.58, 0.72, 1.12), vec3(1.03, 1.01, 0.97), uDayness);
+    float lightE = mix(0.62, 1.0, uDayness);
+    vec3 lit = lifeC.rgb * lightT * lightE * (1.0 + h * 0.18);
+    water = mix(water, lit, clamp(lifeC.a, 0.0, 1.0));
+  }
+
+  /* Atmosphere stays in the shader so weather→clear does not need a
+     full-screen Canvas2D veil. */
+  float hazeA = clamp(uHaze, 0.0, 0.88);
+  water = mix(water, vec3(0.68, 0.74, 0.76) * uExposure, hazeA * 0.7);
+  water = mix(water, vec3(0.62, 0.70, 0.72) * uExposure, clamp(uFog, 0.0, 1.0) * (0.18 + vig * 0.28));
+  float night = 1.0 - uDayness;
+  if (night > 0.02) {
+    water = mix(water, water * vec3(0.42, 0.50, 0.78), clamp(night * 0.55, 0.0, 0.55));
+    water = mix(water, vec3(0.01, 0.02, 0.06), night * 0.22 * (1.0 - vig));
+    float moonAmt = smoothstep(0.35, 0.72, night);
+    if (moonAmt > 0.001) {
+      vec2 moon = vec2(0.78, 0.86);
+      float md = length((uv - moon) * vec2(aspect, 1.15));
+      water += vec3(0.82, 0.86, 0.95) * smoothstep(0.11, 0.0, md) * 0.38 * moonAmt;
+    }
+  }
+  if (uDayness > 0.12 && uDayness < 0.55) {
+    float dusk = exp(-pow((uDayness - 0.3) / 0.16, 2.0));
+    water += vec3(0.32, 0.12, 0.04) * dusk * 0.16 * uExposure;
+  }
+
+  float ring = smoothstep(0.1, 0.55, length(n.xy));
+  water += vec3(0.05, 0.08, 0.07) * ring * rainW * (1.0 - crest);
+  fragColor = vec4(water, 1.0);
+}`;
+
   function compile(gl, type, src) {
     const sh = gl.createShader(type);
     gl.shaderSource(sh, src);
@@ -320,10 +427,10 @@ void main() {
     if (!gl) return null;
 
     let simProg;
-    let waterProg;
+    let fullProg;
     try {
       simProg = program(gl, SIM_VS, SIM_FS);
-      waterProg = program(gl, WATER_VS, WATER_FS);
+      fullProg = program(gl, WATER_VS, WATER_FS);
     } catch (err) {
       return {
         kind: "webgl2",
@@ -352,25 +459,43 @@ void main() {
       uImpRad: gl.getUniformLocation(simProg, "uImpRad"),
       uImpCount: gl.getUniformLocation(simProg, "uImpCount"),
     };
-    const water = {
-      uRipple: gl.getUniformLocation(waterProg, "uRipple"),
-      uLife: gl.getUniformLocation(waterProg, "uLife"),
-      uResolution: gl.getUniformLocation(waterProg, "uResolution"),
-      uRippleTexel: gl.getUniformLocation(waterProg, "uRippleTexel"),
-      uTime: gl.getUniformLocation(waterProg, "uTime"),
-      uCaustics: gl.getUniformLocation(waterProg, "uCaustics"),
-      uAmbient: gl.getUniformLocation(waterProg, "uAmbient"),
-      uExposure: gl.getUniformLocation(waterProg, "uExposure"),
-      uTint: gl.getUniformLocation(waterProg, "uTint"),
-      uCausticGain: gl.getUniformLocation(waterProg, "uCausticGain"),
-      uHaze: gl.getUniformLocation(waterProg, "uHaze"),
-      uFog: gl.getUniformLocation(waterProg, "uFog"),
-      uDayness: gl.getUniformLocation(waterProg, "uDayness"),
-      uDistort: gl.getUniformLocation(waterProg, "uDistort"),
-      uHasLife: gl.getUniformLocation(waterProg, "uHasLife"),
-      uRippleCalm: gl.getUniformLocation(waterProg, "uRippleCalm"),
-      uRain: gl.getUniformLocation(waterProg, "uRain"),
-    };
+    let ultraProg = null;
+    try {
+      ultraProg = program(gl, WATER_VS, WATER_FS_ULTRA);
+    } catch (err) {
+      ultraProg = null;
+    }
+
+    function waterUniforms(prog) {
+      return {
+        prog: prog,
+        uRipple: gl.getUniformLocation(prog, "uRipple"),
+        uLife: gl.getUniformLocation(prog, "uLife"),
+        uResolution: gl.getUniformLocation(prog, "uResolution"),
+        uRippleTexel: gl.getUniformLocation(prog, "uRippleTexel"),
+        uTime: gl.getUniformLocation(prog, "uTime"),
+        uCaustics: gl.getUniformLocation(prog, "uCaustics"),
+        uAmbient: gl.getUniformLocation(prog, "uAmbient"),
+        uExposure: gl.getUniformLocation(prog, "uExposure"),
+        uTint: gl.getUniformLocation(prog, "uTint"),
+        uCausticGain: gl.getUniformLocation(prog, "uCausticGain"),
+        uHaze: gl.getUniformLocation(prog, "uHaze"),
+        uFog: gl.getUniformLocation(prog, "uFog"),
+        uDayness: gl.getUniformLocation(prog, "uDayness"),
+        uDistort: gl.getUniformLocation(prog, "uDistort"),
+        uHasLife: gl.getUniformLocation(prog, "uHasLife"),
+        uRippleCalm: gl.getUniformLocation(prog, "uRippleCalm"),
+        uRain: gl.getUniformLocation(prog, "uRain"),
+      };
+    }
+
+    const fullWater = waterUniforms(fullProg);
+    const ultraWater = ultraProg ? waterUniforms(ultraProg) : fullWater;
+    let water = quality && quality.detail === "ultra" ? ultraWater : fullWater;
+
+    function setDetail(detail) {
+      water = detail === "ultra" ? ultraWater : fullWater;
+    }
 
     let lifeTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, lifeTex);
@@ -495,13 +620,10 @@ void main() {
       return true;
     }
 
-    function render(cssW, cssH, pixelW, pixelH, time, opts) {
-      opts = opts || {};
-      if (opts.ensureBuffer) ensureBuffer(pixelW, pixelH);
-      const hasLife = uploadLife(opts.life, !!opts.refreshLife);
+    function shade(cssW, cssH, pixelW, pixelH, time, opts, hasLife) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, pixelW, pixelH);
-      gl.useProgram(waterProg);
+      gl.useProgram(water.prog);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, curr.tex);
       gl.uniform1i(water.uRipple, 0);
@@ -525,7 +647,29 @@ void main() {
       gl.uniform1f(water.uHasLife, hasLife ? 1 : 0);
       gl.uniform1f(water.uRippleCalm, opts.rippleCalm != null ? opts.rippleCalm : 0);
       gl.uniform1f(water.uRain, opts.rain != null ? opts.rain : 0);
-      drawQuad(waterProg);
+      drawQuad(water.prog);
+    }
+
+    function render(cssW, cssH, pixelW, pixelH, time, opts) {
+      opts = opts || {};
+      if (opts.ensureBuffer) ensureBuffer(pixelW, pixelH);
+      const perf = global.PondPerf && PondPerf.enabled && PondPerf.enabled();
+      if (!perf) {
+        const hasLife = uploadLife(opts.life, !!opts.refreshLife);
+        shade(cssW, cssH, pixelW, pixelH, time, opts, hasLife);
+        return;
+      }
+      const hasLife = PondPerf.section("lifeUpload", function () {
+        const ok = uploadLife(opts.life, !!opts.refreshLife);
+        const px = new Uint8Array(4);
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        return ok;
+      });
+      PondPerf.section("waterShade", function () {
+        shade(cssW, cssH, pixelW, pixelH, time, opts, hasLife);
+        const px = new Uint8Array(4);
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      });
     }
 
     return {
@@ -535,6 +679,15 @@ void main() {
       step,
       render,
       rebuild,
+      setDetail,
+      finish: function () {
+        /* gl.finish() returns before the GPU on some ANGLE paths.
+           A 1px readback is what actually waits. */
+        const px = new Uint8Array(4);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, curr.fb);
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      },
       ensureBuffer,
       bufferMismatch,
       lost: false,
@@ -695,6 +848,7 @@ void main() {
       setQuality: function (nextQuality) {
         lastRipple = nextQuality.ripple;
         damp = nextQuality.ripple >= 400 ? 0.991 : nextQuality.ripple >= 240 ? 0.988 : 0.983;
+        if (impl.setDetail) impl.setDetail(nextQuality.detail);
         if (impl.rebuild) impl.rebuild(nextQuality.ripple);
       },
       recoverSim: function () {
@@ -721,6 +875,7 @@ void main() {
           if (dt > 0.028) impl.step(d);
           if (rainSettle > 0 && rainAmt < 0.22) impl.step(d);
         }
+        if (impl.finish && global.PondPerf && PondPerf.syncing && PondPerf.syncing()) impl.finish();
       },
       ensureBuffer: function (pixelW, pixelH) {
         if (impl.ensureBuffer) return impl.ensureBuffer(pixelW, pixelH);

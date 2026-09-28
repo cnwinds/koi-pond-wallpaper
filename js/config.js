@@ -1,7 +1,7 @@
 /* Shared settings: query params, localStorage, Lively properties, quality presets. */
 (function (global) {
   const STORE_KEY = "koi-pond-wallpaper-v1";
-  const QUALITY_NAMES = ["low", "mid", "high"];
+  const QUALITY_NAMES = ["low", "mid", "high", "ultra"];
 
   const presets = {
     low: {
@@ -46,6 +46,29 @@
       lifeDistort: 0.048,
       power: "default",
     },
+    /* Measured hot path on a full-HD frame is the water shader and the
+       life-canvas upload. Ripple, fish, and #wx were a small slice, so
+       this tier only shrinks the framebuffer and swaps in a cheaper
+       shade. low / mid / high above stay on the v0.3.15 budgets. */
+    ultra: {
+      ripple: 160,
+      dpr: 1,
+      caustics: false,
+      particles: 18,
+      pads: 3,
+      blurShadow: false,
+      ambientWaves: 0.55,
+      spineSlices: 16,
+      rainStreaks: 0,
+      rainDrips: 0.35,
+      lifeDistort: 0.022,
+      power: "low-power",
+      maxLongEdge: 960,
+      detail: "ultra",
+      /* After the resolution cut, the life-canvas upload was still the
+         largest section. Draw that canvas in the page instead. */
+      lifeOverlay: true,
+    },
   };
 
   const defaults = {
@@ -74,10 +97,13 @@
 
   function parseQuality(value) {
     if (typeof value === "number" && !Number.isNaN(value)) {
-      return QUALITY_NAMES[clamp(value | 0, 0, 2)];
+      return QUALITY_NAMES[clamp(value | 0, 0, QUALITY_NAMES.length - 1)];
     }
     const key = String(value || "").toLowerCase();
     if (key === "medium") return "mid";
+    if (key === "verylow" || key === "very-low" || key === "ultralow" || key === "ultra-low" || key === "极低") {
+      return "ultra";
+    }
     if (QUALITY_NAMES.indexOf(key) >= 0) return key;
     return null;
   }

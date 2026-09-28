@@ -53,7 +53,6 @@
     ultra: {
       ripple: 160,
       dpr: 1,
-      caustics: false,
       particles: 18,
       pads: 3,
       blurShadow: false,
@@ -65,8 +64,10 @@
       power: "low-power",
       maxLongEdge: 960,
       detail: "ultra",
-      /* After the resolution cut, the life-canvas upload was still the
-         largest section. Draw that canvas in the page instead. */
+      /* Light lines are a baked tile on the life overlay, not shader
+         sines. low stays off. Life stays overlaid: dirty-rect uploads
+         measured 40–70 ms. */
+      caustics: true,
       lifeOverlay: true,
     },
   };

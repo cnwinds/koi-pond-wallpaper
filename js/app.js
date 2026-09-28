@@ -202,7 +202,7 @@
       world.update(dt, water, preset, look);
     });
     perfSection("fishDraw", function () {
-      world.render(preset, look);
+      world.render(preset, look, causticWeight);
     });
     const needLife = refreshLife;
     refreshLife = false;

@@ -248,14 +248,17 @@ void main() {
   fragColor = vec4(water, 1.0);
 }`;
 
-  /* Ultra only. Five height taps, no pebble noise, film grain, or caustic
-     calls. low / mid / high keep WATER_FS above. */
+  /* Ultra only. Three height taps (one-sided gradient), one baked pebble
+     sample, and one grain hash. Caustic lines are a Canvas2D tile on the
+     life overlay, so this pass does not evaluate them.
+     low / mid / high keep WATER_FS above. */
   const WATER_FS_ULTRA = `#version 300 es
 precision mediump float;
 in vec2 vUv;
 out vec4 fragColor;
 uniform sampler2D uRipple;
 uniform sampler2D uLife;
+uniform sampler2D uPebble;
 uniform vec2 uResolution;
 uniform vec2 uRippleTexel;
 uniform float uTime;
@@ -280,18 +283,18 @@ void main() {
   vec2 uv = vUv;
   float aspect = uResolution.x / max(uResolution.y, 1.0);
   vec2 t = uRippleTexel;
-  float hL = tapH(uv - vec2(t.x, 0.0));
+  float hC = tapH(uv);
   float hR = tapH(uv + vec2(t.x, 0.0));
-  float hD = tapH(uv - vec2(0.0, t.y));
   float hU = tapH(uv + vec2(0.0, t.y));
-  float h = tapH(uv) * 2.0 - 1.0;
+  float h = hC * 2.0 - 1.0;
 
   float amb = uAmbient * (
     sin(uv.x * 7.2 + uTime * 0.31) * sin(uv.y * 5.1 - uTime * 0.23) * 0.012 +
     sin((uv.x * aspect + uv.y) * 3.4 - uTime * 0.17) * 0.008
   );
   float calm = clamp(uRippleCalm, 0.0, 1.0);
-  vec3 n = normalize(vec3((hL - hR) + amb * 4.0, (hD - hU) + amb * 3.0, 0.16));
+  /* *2 matches the old central difference, which spanned two texels. */
+  vec3 n = normalize(vec3((hC - hR) * 2.0 + amb * 4.0, (hC - hU) * 2.0 + amb * 3.0, 0.16));
   n.xy *= mix(1.0, 0.28, calm);
 
   vec2 d = (uv - 0.5) * vec2(aspect, 1.0);
@@ -301,6 +304,12 @@ void main() {
   vec3 midc = mix(vec3(0.03, 0.055, 0.12), vec3(0.07, 0.24, 0.24), uDayness);
   vec3 shallow = mix(vec3(0.05, 0.09, 0.16), vec3(0.12, 0.34, 0.32), uDayness);
   vec3 floorCol = mix(deep, mix(midc, shallow, depth), 0.86);
+
+  vec2 floorUv = (uv + n.xy * 0.015) * vec2(aspect, 1.0);
+  vec2 peb = texture(uPebble, floorUv * 14.0).rg;
+  floorCol += vec3(0.02, 0.028, 0.016) * (peb.r * 2.0 - 1.0) * (0.35 + 0.65 * uDayness);
+  floorCol += vec3(0.03, 0.04, 0.02) * (peb.g * 2.0 - 1.0) * 0.35 * uDayness;
+
   vec3 water = floorCol * mix(vec3(0.7, 0.82, 1.05), vec3(0.78, 0.96, 0.93), uDayness);
 
   vec3 L = normalize(mix(vec3(0.2, 0.15, 0.9), vec3(-0.35, 0.48, 0.8), uDayness));
@@ -319,6 +328,8 @@ void main() {
   water *= 0.72 + 0.28 * vig;
   water = max(water, mix(vec3(0.012, 0.02, 0.04), vec3(0.05, 0.12, 0.11), uDayness));
   water *= uTint * uExposure;
+  float grain = fract(sin(dot(uv * uResolution + uTime * 12.0, vec2(12.9898, 78.233))) * 43758.5453);
+  water += (grain - 0.5) * 0.012;
 
   if (uHasLife > 0.5) {
     vec2 warp = clamp(n.xy * uDistort, vec2(-0.008), vec2(0.008));
@@ -406,6 +417,52 @@ void main() {
     return { tex, fb, w, h };
   }
 
+  function makePebbleTexture(gl) {
+    const N = 64;
+    const data = new Uint8Array(N * N * 4);
+    function noise(x, y, seed, per) {
+      function hash(ix, iy) {
+        ix = ((ix % per) + per) % per;
+        iy = ((iy % per) + per) % per;
+        const s = Math.sin(ix * 127.1 + iy * 311.7 + seed) * 43758.5453123;
+        return s - Math.floor(s);
+      }
+      const x0 = Math.floor(x);
+      const y0 = Math.floor(y);
+      const fx = x - x0;
+      const fy = y - y0;
+      const ux = fx * fx * (3 - 2 * fx);
+      const uy = fy * fy * (3 - 2 * fy);
+      const a = hash(x0, y0);
+      const b = hash(x0 + 1, y0);
+      const c = hash(x0, y0 + 1);
+      const d = hash(x0 + 1, y0 + 1);
+      return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+    }
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        const u = ((x + 0.5) / N) * 8;
+        const v = ((y + 0.5) / N) * 8;
+        const fine = noise(u, v, 1.7, 8);
+        const coarse = noise(u * 0.5, v * 0.5, 9.2, 4);
+        const i = (y * N + x) * 4;
+        data[i] = Math.max(0, Math.min(255, Math.round(fine * 255)));
+        data[i + 1] = Math.max(0, Math.min(255, Math.round(coarse * 255)));
+        data[i + 2] = 128;
+        data[i + 3] = 255;
+      }
+    }
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, N, N, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    return tex;
+  }
+
   function clearTarget(gl, target) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.fb);
     gl.viewport(0, 0, target.w, target.h);
@@ -486,6 +543,7 @@ void main() {
         uHasLife: gl.getUniformLocation(prog, "uHasLife"),
         uRippleCalm: gl.getUniformLocation(prog, "uRippleCalm"),
         uRain: gl.getUniformLocation(prog, "uRain"),
+        uPebble: gl.getUniformLocation(prog, "uPebble"),
       };
     }
 
@@ -506,6 +564,7 @@ void main() {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
     let lifeW = 1;
     let lifeH = 1;
+    const pebbleTex = makePebbleTexture(gl);
 
     let curr = null;
     let prev = null;
@@ -630,6 +689,11 @@ void main() {
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, lifeTex);
       gl.uniform1i(water.uLife, 1);
+      if (water.uPebble && pebbleTex) {
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, pebbleTex);
+        gl.uniform1i(water.uPebble, 2);
+      }
       gl.uniform2f(water.uResolution, cssW, cssH);
       gl.uniform2f(water.uRippleTexel, 1 / simW, 1 / simH);
       gl.uniform1f(water.uTime, time);

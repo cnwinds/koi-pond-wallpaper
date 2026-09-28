@@ -54,11 +54,15 @@
   let demoT = 0;
   let time = 0;
 
-  function dprCap() {
-    const want = config.preset().dpr;
+  function pixelScale(cssWidth, cssHeight) {
+    const preset = config.preset();
     const view = global.visualViewport;
     const raw = (view && view.scale ? global.devicePixelRatio * view.scale : global.devicePixelRatio) || 1;
-    return Math.max(1, Math.min(raw, want));
+    let scale = Math.max(1, Math.min(raw, preset.dpr));
+    const cap = preset.maxLongEdge || 0;
+    const longEdge = Math.max(cssWidth, cssHeight, 1);
+    if (cap > 0 && longEdge * scale > cap) scale = cap / longEdge;
+    return Math.max(0.2, scale);
   }
 
   function allocCanvas(cv, w, h, force) {
@@ -73,7 +77,7 @@
     opts = opts || {};
     cssW = Math.max(1, global.innerWidth || document.documentElement.clientWidth);
     cssH = Math.max(1, global.innerHeight || document.documentElement.clientHeight);
-    const dpr = dprCap();
+    const dpr = pixelScale(cssW, cssH);
     pixelW = Math.max(1, Math.round(cssW * dpr));
     pixelH = Math.max(1, Math.round(cssH * dpr));
     const force = !!opts.forceRealloc;
@@ -512,6 +516,23 @@
       return {
         look: look,
         quality: config.state.quality,
+        cost: (function () {
+          const preset = config.preset();
+          return {
+            maxLongEdge: preset.maxLongEdge || 0,
+            detail: preset.detail || "full",
+            ripple: preset.ripple,
+            caustics: !!preset.caustics,
+            smoothing: preset.smoothing || "high",
+            spineSlices: preset.spineSlices,
+            particles: preset.particles,
+            pads: preset.pads,
+            rainStreaks: preset.rainStreaks,
+            fish: config.state.fish,
+            simFish: world.fish ? world.fish.length : config.state.fish,
+            css: [cssW, cssH],
+          };
+        })(),
         water: { w: waterCanvas.width, h: waterCanvas.height, kind: water.kind() },
         life: { w: lifeCanvas.width, h: lifeCanvas.height },
         wx: {

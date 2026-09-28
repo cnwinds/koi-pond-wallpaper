@@ -82,7 +82,10 @@ function staticChecks() {
   assert(water.includes("soft slope sheen"), "rain rings are not lit after the veil", failures);
   assert(climate.includes("six-fold hex flake"), "snow is missing hexagonal flakes", failures);
   assert(climate.includes("snowOrdinal < 2"), "hex flakes are not a minority of snow", failures);
-  assert(csproj.includes("<Version>0.3.15</Version>"), "csproj not bumped to 0.3.15", failures);
+  assert(water.includes("#define DETAIL_LOW"), "low water shader is not a separate program", failures);
+  assert(water.includes("maxLongEdge") || read("js/config.js").includes("maxLongEdge: 960"), "low preset has no resolution cap", failures);
+  assert(read("js/config.js").includes("maxLongEdge: 960"), "low long-edge cap missing", failures);
+  assert(csproj.includes("<Version>0.3.16</Version>"), "csproj not bumped to 0.3.16", failures);
   return failures;
 }
 

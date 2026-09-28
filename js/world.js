@@ -629,10 +629,10 @@
     function drawFish(f, slices) {
       const tex = f.sprite.canvas;
       const pal = f.sprite.pal || { base: "#f3efe4", edge: "#d0c8bc", eye: "#1a1612" };
-      const n = Math.max(16, slices);
+      const n = Math.max(8, slices | 0);
       const bodyW = bodyLength(f);
       const spine = f.spine;
-      const ribbon = buildRibbon(spine, bodyW, Math.max(22, n));
+      const ribbon = buildRibbon(spine, bodyW, Math.max(12, n));
 
       drawTail(f, pal);
       drawFins(f, pal);
@@ -690,7 +690,7 @@
     function render(quality, look) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
+      ctx.imageSmoothingQuality = (quality && quality.smoothing) || "high";
       ctx.clearRect(0, 0, cssW, cssH);
 
       const slices = sliceCount(quality);

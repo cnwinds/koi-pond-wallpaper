@@ -4,15 +4,21 @@
   const QUALITY_NAMES = ["low", "mid", "high"];
 
   const presets = {
+    /* maxLongEdge caps the backing store (CSS pixels × scale). Low is about
+       half of 1080p. Mid trims anything wider than 1600. High is uncapped
+       aside from its device-pixel cap. */
     low: {
       ripple: 160,
       dpr: 1,
+      maxLongEdge: 960,
+      detail: "low",
+      smoothing: "low",
       caustics: false,
-      particles: 18,
+      particles: 8,
       pads: 3,
       blurShadow: false,
       ambientWaves: 0.55,
-      spineSlices: 16,
+      spineSlices: 10,
       rainStreaks: 0,
       rainDrips: 0.35,
       lifeDistort: 0.022,
@@ -21,6 +27,9 @@
     mid: {
       ripple: 320,
       dpr: 1.25,
+      maxLongEdge: 1600,
+      detail: "full",
+      smoothing: "medium",
       caustics: true,
       particles: 42,
       pads: 5,
@@ -35,6 +44,9 @@
     high: {
       ripple: 512,
       dpr: 2,
+      maxLongEdge: 0,
+      detail: "full",
+      smoothing: "high",
       caustics: true,
       particles: 72,
       pads: 7,

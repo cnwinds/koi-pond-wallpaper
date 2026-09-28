@@ -39,6 +39,7 @@
     let cssH = 1;
     let dpr = 1;
     let clock = 0;
+    let cauPattern = null;
     const fish = [];
     const food = [];
     const pads = [];
@@ -687,7 +688,71 @@
       return 24;
     }
 
-    function render(quality, look) {
+    /* One seamless tile. Only the bright ridges keep alpha, so the rest
+       of the overlay stays transparent and the water canvas shows through. */
+    function causticTile() {
+      const S = 128;
+      const c = document.createElement("canvas");
+      c.width = S;
+      c.height = S;
+      const g = c.getContext("2d");
+      const img = g.createImageData(S, S);
+      const d = img.data;
+      for (let y = 0; y < S; y++) {
+        for (let x = 0; x < S; x++) {
+          const a = Math.sin(((x * 2) / S + (y * 3) / S) * TWO_PI);
+          const b = Math.sin(((x * 3) / S - (y * 2) / S) * TWO_PI + 1.1);
+          const cyc = Math.sin(((x * 1) / S + (y * 2) / S) * TWO_PI);
+          let lines = 0.5 + 0.28 * a + 0.16 * b + 0.1 * cyc;
+          let ridge = (lines - 0.82) / 0.18;
+          if (ridge < 0) ridge = 0;
+          else if (ridge > 1) ridge = 1;
+          ridge = ridge * ridge * ridge;
+          const i = (y * S + x) * 4;
+          d[i] = (186 * ridge) | 0;
+          d[i + 1] = (214 * ridge) | 0;
+          d[i + 2] = (156 * ridge) | 0;
+          d[i + 3] = (255 * ridge) | 0;
+        }
+      }
+      g.putImageData(img, 0, 0);
+      return c;
+    }
+
+    const bakedCaustics = causticTile();
+
+    function drawCausticOverlay(look) {
+      const gain = look && look.causticGain != null ? look.causticGain : 1;
+      if (gain < 0.08) return;
+      if (!cauPattern) cauPattern = ctx.createPattern(bakedCaustics, "repeat");
+      if (!cauPattern) return;
+      /* Two large repeats. A single small tile read as a tight web. */
+      const layers = [
+        { scale: 2.8, alpha: 0.48, vx: 16, vy: -9 },
+        { scale: 1.65, alpha: 0.28, vx: -11, vy: 7 },
+      ];
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.fillStyle = cauPattern;
+      for (let i = 0; i < layers.length; i++) {
+        const layer = layers[i];
+        const span = 128 * layer.scale;
+        const ox = ((clock * layer.vx) % span + span) % span;
+        const oy = ((clock * layer.vy) % span + span) % span;
+        ctx.setTransform(dpr * layer.scale, 0, 0, dpr * layer.scale, 0, 0);
+        ctx.globalAlpha = Math.min(0.62, gain * layer.alpha);
+        ctx.translate(ox / layer.scale, oy / layer.scale);
+        ctx.fillRect(
+          -ox / layer.scale - 2,
+          -oy / layer.scale - 2,
+          cssW / layer.scale + 4,
+          cssH / layer.scale + 4
+        );
+      }
+      ctx.restore();
+    }
+
+    function render(quality, look, causticWeight) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
@@ -748,6 +813,10 @@
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
+
+      /* Ultra only. Lines sit on the fish and on the transparent gaps,
+         which the page composites over the water. */
+      if (quality && quality.lifeOverlay && causticWeight > 0) drawCausticOverlay(look);
 
       /* Ultra shows this canvas above the water, so night has to dim the
          sprites here. The full shader still tints life for the other tiers. */

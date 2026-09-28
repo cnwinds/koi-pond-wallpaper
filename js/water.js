@@ -248,8 +248,9 @@ void main() {
   fragColor = vec4(water, 1.0);
 }`;
 
-  /* Ultra only. Five height taps, one baked pebble sample, a sine caustic
-     that does not read the ripple normal, and one grain hash.
+  /* Ultra only. Three height taps (one-sided gradient), one baked pebble
+     sample, and one grain hash. Caustic lines are a Canvas2D tile on the
+     life overlay, so this pass does not evaluate them.
      low / mid / high keep WATER_FS above. */
   const WATER_FS_ULTRA = `#version 300 es
 precision mediump float;
@@ -278,30 +279,22 @@ float tapH(vec2 uv) {
   return texture(uRipple, uv).r;
 }
 
-float cheapCau(vec2 p) {
-  float a = sin(p.x * 9.0 + p.y * 4.2);
-  float b = sin(p.x * 5.2 - p.y * 8.1 + 1.7);
-  float c = sin((p.x + p.y) * 6.4 - 0.6);
-  float lines = 0.55 + 0.22 * a + 0.16 * b + 0.1 * c;
-  return pow(clamp(lines, 0.0, 1.0), 4.0);
-}
-
 void main() {
   vec2 uv = vUv;
   float aspect = uResolution.x / max(uResolution.y, 1.0);
   vec2 t = uRippleTexel;
-  float hL = tapH(uv - vec2(t.x, 0.0));
+  float hC = tapH(uv);
   float hR = tapH(uv + vec2(t.x, 0.0));
-  float hD = tapH(uv - vec2(0.0, t.y));
   float hU = tapH(uv + vec2(0.0, t.y));
-  float h = tapH(uv) * 2.0 - 1.0;
+  float h = hC * 2.0 - 1.0;
 
   float amb = uAmbient * (
     sin(uv.x * 7.2 + uTime * 0.31) * sin(uv.y * 5.1 - uTime * 0.23) * 0.012 +
     sin((uv.x * aspect + uv.y) * 3.4 - uTime * 0.17) * 0.008
   );
   float calm = clamp(uRippleCalm, 0.0, 1.0);
-  vec3 n = normalize(vec3((hL - hR) + amb * 4.0, (hD - hU) + amb * 3.0, 0.16));
+  /* *2 matches the old central difference, which spanned two texels. */
+  vec3 n = normalize(vec3((hC - hR) * 2.0 + amb * 4.0, (hC - hU) * 2.0 + amb * 3.0, 0.16));
   n.xy *= mix(1.0, 0.28, calm);
 
   vec2 d = (uv - 0.5) * vec2(aspect, 1.0);
@@ -316,15 +309,6 @@ void main() {
   vec2 peb = texture(uPebble, floorUv * 14.0).rg;
   floorCol += vec3(0.02, 0.028, 0.016) * (peb.r * 2.0 - 1.0) * (0.35 + 0.65 * uDayness);
   floorCol += vec3(0.03, 0.04, 0.02) * (peb.g * 2.0 - 1.0) * 0.35 * uDayness;
-
-  float sunW = clamp(uCaustics, 0.0, 1.0);
-  float cau = 0.0;
-  if (sunW > 0.001) {
-    vec2 cp = floorUv * 5.5 + vec2(uTime * 0.07, -uTime * 0.045);
-    cau = cheapCau(cp);
-    float cauAmt = (0.45 + 0.4 * depth) * uCausticGain * sunW * (1.0 - calm * 0.85);
-    floorCol += vec3(0.42, 0.58, 0.34) * cau * cauAmt;
-  }
 
   vec3 water = floorCol * mix(vec3(0.7, 0.82, 1.05), vec3(0.78, 0.96, 0.93), uDayness);
 
@@ -353,7 +337,6 @@ void main() {
     vec3 lightT = mix(vec3(0.58, 0.72, 1.12), vec3(1.03, 1.01, 0.97), uDayness);
     float lightE = mix(0.62, 1.0, uDayness);
     vec3 lit = lifeC.rgb * lightT * lightE * (1.0 + h * 0.18);
-    lit += vec3(0.22, 0.32, 0.18) * cau * uCausticGain * sunW;
     water = mix(water, lit, clamp(lifeC.a, 0.0, 1.0));
   }
 

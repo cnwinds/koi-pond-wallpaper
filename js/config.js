@@ -64,8 +64,9 @@
       power: "low-power",
       maxLongEdge: 960,
       detail: "ultra",
-      /* Sine caustics in the ultra shader only. low stays off.
-         Life stays overlaid: dirty-rect uploads measured 40–70 ms. */
+      /* Light lines are a baked tile on the life overlay, not shader
+         sines. low stays off. Life stays overlaid: dirty-rect uploads
+         measured 40–70 ms. */
       caustics: true,
       lifeOverlay: true,
     },

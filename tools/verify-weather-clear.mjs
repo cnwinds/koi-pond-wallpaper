@@ -82,7 +82,7 @@ function staticChecks() {
   assert(water.includes("soft slope sheen"), "rain rings are not lit after the veil", failures);
   assert(climate.includes("six-fold hex flake"), "snow is missing hexagonal flakes", failures);
   assert(climate.includes("snowOrdinal < 2"), "hex flakes are not a minority of snow", failures);
-  assert(csproj.includes("<Version>0.3.16</Version>"), "csproj not bumped to 0.3.16", failures);
+  assert(csproj.includes("<Version>0.3.17</Version>"), "csproj not bumped to 0.3.17", failures);
   const config = read("js/config.js");
   const lowPreset = `low: {
       ripple: 160,

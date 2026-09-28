@@ -688,32 +688,90 @@
       return 24;
     }
 
-    /* One seamless tile. Only the bright ridges keep alpha, so the rest
-       of the overlay stays transparent and the water canvas shows through. */
+    /* Same idea as WATER_FS caustic(): glow where a smooth noise sum
+       crosses zero, then a wide blur. Not sine peaks (ovals) and not
+       Voronoi edges (cracked glass). */
     function causticTile() {
-      const S = 128;
+      const S = 256;
+      const P = 4;
+      function fade(t) {
+        return t * t * (3 - 2 * t);
+      }
+      function grad(ix, iy) {
+        ix = ((ix % P) + P) % P;
+        iy = ((iy % P) + P) % P;
+        const s = Math.sin(ix * 127.1 + iy * 311.7) * 43758.5453;
+        const a = (s - Math.floor(s)) * TWO_PI;
+        return [Math.cos(a), Math.sin(a)];
+      }
+      function noise(x, y) {
+        const x0 = Math.floor(x);
+        const y0 = Math.floor(y);
+        const fx = x - x0;
+        const fy = y - y0;
+        const ux = fade(fx);
+        const uy = fade(fy);
+        function n(ix, iy, dx, dy) {
+          const g = grad(ix, iy);
+          return g[0] * dx + g[1] * dy;
+        }
+        const n00 = n(x0, y0, fx, fy);
+        const n10 = n(x0 + 1, y0, fx - 1, fy);
+        const n01 = n(x0, y0 + 1, fx, fy - 1);
+        const n11 = n(x0 + 1, y0 + 1, fx - 1, fy - 1);
+        return (n00 * (1 - ux) + n10 * ux) * (1 - uy) + (n01 * (1 - ux) + n11 * ux) * uy;
+      }
+      function ribbon(u, v) {
+        const n1 = noise(u * P, v * P);
+        const n2 = noise(u * P + n1 + 2, v * P + 1);
+        const a = Math.pow(Math.max(0, 1 - Math.abs(n1 + n2 * 0.85)), 6);
+        const m1 = noise(v * P + 1, u * P + 2);
+        const m2 = noise(v * P + m1 + 3, u * P + 2);
+        const b = Math.pow(Math.max(0, 1 - Math.abs(m1 + m2 * 0.85)), 6);
+        return Math.min(1, a * 0.78 + b * 0.38);
+      }
+      let field = new Float32Array(S * S);
+      for (let y = 0; y < S; y++) {
+        for (let x = 0; x < S; x++) field[y * S + x] = ribbon(x / S, y / S);
+      }
+      function box(input, r) {
+        const tmp = new Float32Array(S * S);
+        const out = new Float32Array(S * S);
+        const inv = 1 / (r * 2 + 1);
+        for (let y = 0; y < S; y++) {
+          for (let x = 0; x < S; x++) {
+            let s = 0;
+            for (let k = -r; k <= r; k++) s += input[y * S + ((x + k + S) % S)];
+            tmp[y * S + x] = s * inv;
+          }
+        }
+        for (let y = 0; y < S; y++) {
+          for (let x = 0; x < S; x++) {
+            let s = 0;
+            for (let k = -r; k <= r; k++) s += tmp[((y + k + S) % S) * S + x];
+            out[y * S + x] = s * inv;
+          }
+        }
+        return out;
+      }
+      field = box(field, 2);
+      field = box(field, 2);
       const c = document.createElement("canvas");
       c.width = S;
       c.height = S;
       const g = c.getContext("2d");
       const img = g.createImageData(S, S);
       const d = img.data;
-      for (let y = 0; y < S; y++) {
-        for (let x = 0; x < S; x++) {
-          const a = Math.sin(((x * 2) / S + (y * 3) / S) * TWO_PI);
-          const b = Math.sin(((x * 3) / S - (y * 2) / S) * TWO_PI + 1.1);
-          const cyc = Math.sin(((x * 1) / S + (y * 2) / S) * TWO_PI);
-          let lines = 0.5 + 0.28 * a + 0.16 * b + 0.1 * cyc;
-          let ridge = (lines - 0.82) / 0.18;
-          if (ridge < 0) ridge = 0;
-          else if (ridge > 1) ridge = 1;
-          ridge = ridge * ridge * ridge;
-          const i = (y * S + x) * 4;
-          d[i] = (186 * ridge) | 0;
-          d[i + 1] = (214 * ridge) | 0;
-          d[i + 2] = (156 * ridge) | 0;
-          d[i + 3] = (255 * ridge) | 0;
-        }
+      for (let i = 0; i < S * S; i++) {
+        let v = (field[i] - 0.28) / 0.72;
+        if (v < 0) v = 0;
+        else if (v > 1) v = 1;
+        v = Math.pow(v, 1.35);
+        const o = i * 4;
+        d[o] = 206;
+        d[o + 1] = 232;
+        d[o + 2] = 176;
+        d[o + 3] = (255 * v) | 0;
       }
       g.putImageData(img, 0, 0);
       return c;
@@ -726,29 +784,19 @@
       if (gain < 0.08) return;
       if (!cauPattern) cauPattern = ctx.createPattern(bakedCaustics, "repeat");
       if (!cauPattern) return;
-      /* Two large repeats. A single small tile read as a tight web. */
-      const layers = [
-        { scale: 2.8, alpha: 0.48, vx: 16, vy: -9 },
-        { scale: 1.65, alpha: 0.28, vx: -11, vy: 7 },
-      ];
+      const scale = 3.6;
+      const span = 256 * scale;
+      const ox = ((clock * 12) % span + span) % span;
+      const oy = ((-clock * 7) % span + span) % span;
       ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "low";
       ctx.globalCompositeOperation = "screen";
+      ctx.globalAlpha = Math.min(0.4, gain * 0.32);
+      ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
+      ctx.translate(ox / scale, oy / scale);
       ctx.fillStyle = cauPattern;
-      for (let i = 0; i < layers.length; i++) {
-        const layer = layers[i];
-        const span = 128 * layer.scale;
-        const ox = ((clock * layer.vx) % span + span) % span;
-        const oy = ((clock * layer.vy) % span + span) % span;
-        ctx.setTransform(dpr * layer.scale, 0, 0, dpr * layer.scale, 0, 0);
-        ctx.globalAlpha = Math.min(0.62, gain * layer.alpha);
-        ctx.translate(ox / layer.scale, oy / layer.scale);
-        ctx.fillRect(
-          -ox / layer.scale - 2,
-          -oy / layer.scale - 2,
-          cssW / layer.scale + 4,
-          cssH / layer.scale + 4
-        );
-      }
+      ctx.fillRect(-ox / scale - 2, -oy / scale - 2, cssW / scale + 4, cssH / scale + 4);
       ctx.restore();
     }
 

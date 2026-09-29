@@ -67,6 +67,12 @@ npm run webgpu:smoke      # 无头 WebGPU 画一帧，确认不是空画面
 
 不要把这条演示设成 Lively 或 Windows 宿主的默认壁纸。那两条路都走 WebView2，很多运行时没有 WebGPU，或者要很新的 Edge WebView2 且没被策略关掉。贴出来是白屏时，继续用原来的 WebGL 页。浏览器里能开，不代表 WebView2 里也能开。
 
+公开预览不合并进 `main`，也不替换 Lively 入口。静态文件在分支 `cursor/webgpu-pages-42d9`，页面地址：
+
+<https://raw.githack.com/cnwinds/koi-pond-wallpaper/cursor/webgpu-pages-42d9/index.html>
+
+需要 Chrome、Edge 或 Safari。这不是壁纸产品。重新发布：`npm run webgpu:publish`（只推那个静态分支）。GitHub Pages（`https://cnwinds.github.io/koi-pond-wallpaper/`）要仓库管理员在 Settings → Pages 里把 Source 设成 GitHub Actions；当前令牌没有这个权限。细节在 [demos/tidewater-koi/DEMO.md](demos/tidewater-koi/DEMO.md)。
+
 主观效果、耗时和限制写在 [demos/tidewater-koi/DEMO.md](demos/tidewater-koi/DEMO.md)。引擎版权和上游提交号在 `demos/tidewater-koi/vendor/tidewater/`。
 
 ## Windows：导入 Lively Wallpaper

@@ -1,0 +1,44 @@
+# Publishes only the WebGPU demo. Does not run on main and does not touch the
+# WebGL wallpaper. GitHub still has to allow Pages (Settings → Pages → GitHub Actions);
+# this workflow cannot turn that on by itself.
+name: Deploy WebGPU demo
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cursor/tidewater-koi-webgpu-42d9
+    paths:
+      - demos/tidewater-koi/**
+      - package.json
+      - package-lock.json
+      - .github/workflows/webgpu-pages.yml
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: webgpu-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run webgpu:build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: demos/tidewater-koi/dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

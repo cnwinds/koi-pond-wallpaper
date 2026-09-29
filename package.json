@@ -7,7 +7,8 @@
     "webgpu:build": "vite build --config demos/tidewater-koi/vite.config.js",
     "webgpu:preview": "vite preview --config demos/tidewater-koi/vite.config.js --host 127.0.0.1 --port 5190 --strictPort",
     "webgpu:sim": "node demos/tidewater-koi/test/sim.test.mjs",
-    "webgpu:smoke": "node demos/tidewater-koi/test/smoke.mjs"
+    "webgpu:smoke": "node demos/tidewater-koi/test/smoke.mjs",
+    "webgpu:publish": "bash demos/tidewater-koi/scripts/publish-pages.sh"
   },
   "devDependencies": {
     "vite": "^6.3.5",

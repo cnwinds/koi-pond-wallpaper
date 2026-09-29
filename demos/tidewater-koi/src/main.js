@@ -50,7 +50,7 @@ function showError(error) {
   if (hint) hint.hidden = true;
   if (!errBox) return;
   errBox.style.display = 'block';
-  errBox.innerHTML = `<h1>WebGPU 没能启动</h1><p>${escapeHtml(error && error.message ? error.message : error)}</p><p>桌面壁纸请继续用仓库根目录的 WebGL 锦鲤池（<a href="../index.html">index.html</a>）。这条演示需要较新的 Chrome、Edge 或 Safari。Lively 和 WebView2 里经常没有 WebGPU，白屏时不要拿它替换原来的壁纸。</p>`;
+  errBox.innerHTML = `<h1>WebGPU 没能启动</h1><p>${escapeHtml(error && error.message ? error.message : error)}</p><p>这条演示只在较新的 Chrome、Edge 或 Safari 里运行，不能当作 Lively 壁纸。桌面请继续用仓库根目录的 WebGL 锦鲤池 <code>index.html</code>（<a href="https://github.com/cnwinds/koi-pond-wallpaper">仓库</a>）。Lively 和 WebView2 里经常没有 WebGPU。</p>`;
 }
 
 let livelyPause = false;

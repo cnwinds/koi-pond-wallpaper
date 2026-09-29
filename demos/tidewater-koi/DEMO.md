@@ -20,9 +20,27 @@ WebGL 那张更像已经打磨过的壁纸：鱼少而清楚，身体是 IK 丝�
 
 同一台机器上用 Chrome 打开 `npm run webgpu`（加了 `--enable-unsafe-webgpu`）时，页面能起来：`?perf=1` 大约 10 fps、1253×699、平时 4 次绘制。在画面中央点一下，绘制变成 5 次，三角形多 14 个，对得上那颗鱼食圆。这是软件 Vulkan（lavapipe）上的帧率，不是桌面独显的预期。窗口本身是白的，GPU 进程报 SkSurface 初始化失败，交换链没有把画布交到屏幕上；画面内容以无头读回为准。
 
+## 公开地址
+
+不合并进 `main`，也不改 Lively 入口。构建用的是相对路径（`base: './'`），所以同一份 `dist` 放在子目录或 CDN 上都能加载脚本。
+
+当前能打开的页面：
+
+<https://raw.githack.com/cnwinds/koi-pond-wallpaper/cursor/webgpu-pages-42d9/index.html>
+
+这是分支 `cursor/webgpu-pages-42d9` 上的静态快照，由 [raw.githack.com](https://raw.githack.com/) 按正确的 HTML / JavaScript 类型转发。页面上写着：需要 Chrome、Edge 或 Safari，不是 Lively 壁纸。
+
+仓库还没有 GitHub Pages。创建 Pages 站点的 API 返回 403（令牌没有管理员权限），所以还没有 `https://cnwinds.github.io/koi-pond-wallpaper/`。仓库管理员可以在 Settings → Pages → Build and deployment 里把 Source 选成 **GitHub Actions**。之后向 `cursor/tidewater-koi-webgpu-42d9` 推送 `demos/tidewater-koi/` 会跑 `.github/workflows/webgpu-pages.yml`，只上传这条演示的 `dist`。这个工作流不会在 `main` 上触发。
+
+重新发布静态分支（仍然不推 `main`）：
+
+```bash
+npm run webgpu:publish
+```
+
 ## 已知限制
 
-- 没有 WebGPU 的浏览器、以及多数 Lively / WebView2 运行时，打不开。失败时页面会指回根目录的 WebGL 壁纸。
+- 没有 WebGPU 的浏览器、以及多数 Lively / WebView2 运行时，打不开。失败时页面说明要改用仓库根目录的 WebGL `index.html`，不会把这条演示当成壁纸。
 - 第一帧要编译几条网格管线，会卡一下。之后才进入 30 FPS。
 - 没有真正的水面折射。鱼和池底靠深度叠在一起，上面只做了调色和暗角，所以不像隔着一层晃动的水面看下去。
 - 涟漪是点击和吃食时的几圈亮环，不是 WebGL 那张高度场。

@@ -39,6 +39,19 @@
         animation: hint 9s ease forwards;
       }
       #hint[hidden] { display: none; }
+      #caveat {
+        position: fixed;
+        top: 0.7rem;
+        right: 0.8rem;
+        left: 0.8rem;
+        margin: 0;
+        text-align: right;
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
+        color: rgba(232, 244, 234, 0.78);
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+        pointer-events: none;
+      }
       @keyframes hint {
         0% { opacity: 0; }
         8% { opacity: 1; }
@@ -72,6 +85,7 @@
   </head>
   <body>
     <canvas id="pond" aria-label="俯视锦鲤池"></canvas>
+    <p id="caveat">WebGPU 演示 · 请用 Chrome、Edge 或 Safari · 不是 Lively 壁纸</p>
     <p id="hint">点击水面投喂</p>
     <p id="perf"></p>
     <div id="err" role="alert"></div>

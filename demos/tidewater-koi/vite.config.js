@@ -6,6 +6,8 @@ const demoRoot = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   root: demoRoot,
+  // Relative base so the same build works locally, under a Pages subpath,
+  // and on a CDN that serves this folder as-is. Do not switch this to "/".
   base: './',
   publicDir: false,
   server: {

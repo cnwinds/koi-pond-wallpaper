@@ -9,7 +9,10 @@ on:
     branches:
       - cursor/tidewater-koi-webgpu-42d9
     paths:
-      - demos/tidewater-koi/**
+      - demos/tidewater-koi/index.html
+      - demos/tidewater-koi/src/**
+      - demos/tidewater-koi/vite.config.js
+      - demos/tidewater-koi/vendor/**
       - package.json
       - package-lock.json
       - .github/workflows/webgpu-pages.yml

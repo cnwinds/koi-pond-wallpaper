@@ -71,7 +71,9 @@ npm run webgpu:smoke      # 无头 WebGPU 画一帧，确认不是空画面
 
 <https://raw.githack.com/cnwinds/koi-pond-wallpaper/cursor/webgpu-pages-42d9/index.html>
 
-需要 Chrome、Edge 或 Safari。这不是壁纸产品。重新发布：`npm run webgpu:publish`（只推那个静态分支）。GitHub Pages（`https://cnwinds.github.io/koi-pond-wallpaper/`）要仓库管理员在 Settings → Pages 里把 Source 设成 GitHub Actions；当前令牌没有这个权限。细节在 [demos/tidewater-koi/DEMO.md](demos/tidewater-koi/DEMO.md)。
+用 Chrome、Edge 或 Safari 打开。第一次会先看到 githack 的 “Open the page”（他们的防钓鱼确认），点一下才进入池塘。页面角上写着这不是 Lively 壁纸。重新发布：`npm run webgpu:publish`（只推那个静态分支）。
+
+`https://cnwinds.github.io/koi-pond-wallpaper/` 还没有。仓库没开 GitHub Pages，当前令牌创建站点会 403。管理员打开 [Settings → Pages](https://github.com/cnwinds/koi-pond-wallpaper/settings/pages)，Source 选 **GitHub Actions** 并保存，然后重跑 [这次失败的部署](https://github.com/cnwinds/koi-pond-wallpaper/actions/runs/36566086428)。工作流只上传这条演示，而且不会在 `main` 上触发。细节在 [demos/tidewater-koi/DEMO.md](demos/tidewater-koi/DEMO.md)。
 
 主观效果、耗时和限制写在 [demos/tidewater-koi/DEMO.md](demos/tidewater-koi/DEMO.md)。引擎版权和上游提交号在 `demos/tidewater-koi/vendor/tidewater/`。
 

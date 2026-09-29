@@ -28,9 +28,9 @@ WebGL 那张更像已经打磨过的壁纸：鱼少而清楚，身体是 IK 丝�
 
 <https://raw.githack.com/cnwinds/koi-pond-wallpaper/cursor/webgpu-pages-42d9/index.html>
 
-这是分支 `cursor/webgpu-pages-42d9` 上的静态快照，由 [raw.githack.com](https://raw.githack.com/) 按正确的 HTML / JavaScript 类型转发。页面上写着：需要 Chrome、Edge 或 Safari，不是 Lively 壁纸。
+这是分支 `cursor/webgpu-pages-42d9` 上的静态快照，由 [raw.githack.com](https://raw.githack.com/) 按正确的 HTML / JavaScript 类型转发。浏览器第一次打开会先停在他们的 “Open the page” 确认页，点一下才进入池塘；脚本请求不会再拦。页面角上写着：需要 Chrome、Edge 或 Safari，不是 Lively 壁纸。在这台机器的 Chrome 里，点过确认之后 `?perf=1` 大约 10 fps，点水面后绘制从 4 次变成 5 次。
 
-仓库还没有 GitHub Pages。创建 Pages 站点的 API 返回 403（令牌没有管理员权限），所以还没有 `https://cnwinds.github.io/koi-pond-wallpaper/`。仓库管理员可以在 Settings → Pages → Build and deployment 里把 Source 选成 **GitHub Actions**。之后向 `cursor/tidewater-koi-webgpu-42d9` 推送 `demos/tidewater-koi/` 会跑 `.github/workflows/webgpu-pages.yml`，只上传这条演示的 `dist`。这个工作流不会在 `main` 上触发。
+仓库还没有 GitHub Pages，所以没有 `https://cnwinds.github.io/koi-pond-wallpaper/`。`POST /repos/cnwinds/koi-pond-wallpaper/pages` 返回 403。工作流 [Deploy WebGPU demo](https://github.com/cnwinds/koi-pond-wallpaper/actions/runs/36566086428) 能编出 `dist`，但 `deploy-pages` 返回 404：站点还没启用。管理员打开 [Settings → Pages](https://github.com/cnwinds/koi-pond-wallpaper/settings/pages)，Build and deployment 的 Source 选 **GitHub Actions**，保存后再重跑那个工作流。`.github/workflows/webgpu-pages.yml` 只上传这条演示的 `dist`，触发分支只有 `cursor/tidewater-koi-webgpu-42d9`，不会在 `main` 上跑。在 Pages 打开之前，这个检查会是红的。
 
 重新发布静态分支（仍然不推 `main`）：
 

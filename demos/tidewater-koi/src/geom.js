@@ -11,9 +11,9 @@ function bodyHalfWidth(t) {
   const ped = smoothstep(0, 0.2, t);
   const snout = smoothstep(0.74, 1, t);
   const belly = Math.sin(Math.PI * Math.min(1, Math.max(0, t)));
-  let w = 0.034 + Math.pow(belly, 0.58) * 0.15;
-  w *= 0.4 + 0.6 * ped;
-  w *= 1 - snout * 0.8;
+  let w = 0.046 + Math.pow(belly, 0.7) * 0.2;
+  w *= 0.38 + 0.62 * ped;
+  w *= 1 - snout * 0.72;
   return w;
 }
 
@@ -56,15 +56,15 @@ export function koiGeometry() {
   for (let i = 0; i < fans - 1; i++) indices.push(base, tips[i], tips[i + 1]);
 
   // Pectoral fins. Negative uv.x marks them so the vertex wave flaps harder.
-  const fx = 0.22;
-  const fy = 0.12;
-  const l0 = push(fx + 0.05, fy, 0.025, 0.62, 1.02);
-  const l1 = push(fx - 0.1, fy * 0.7, 0.025, 0.5, 0.9);
-  const l2 = push(fx - 0.05, fy + 0.26, 0.02, -0.15, 1.7);
+  const fx = 0.12;
+  const fy = 0.1;
+  const l0 = push(fx + 0.1, fy * 0.35, 0.025, 0.7, 0.4);
+  const l1 = push(fx - 0.02, fy * 0.7, 0.025, 0.55, 0.7);
+  const l2 = push(fx + 0.02, fy + 0.16, 0.02, -0.12, 1.2);
   indices.push(l0, l2, l1);
-  const r0 = push(fx + 0.05, -fy, 0.025, 0.62, -1.02);
-  const r1 = push(fx - 0.1, -fy * 0.7, 0.025, 0.5, -0.9);
-  const r2 = push(fx - 0.05, -(fy + 0.26), 0.02, -0.15, -1.7);
+  const r0 = push(fx + 0.1, -fy * 0.35, 0.025, 0.7, -0.4);
+  const r1 = push(fx - 0.02, -fy * 0.7, 0.025, 0.55, -0.7);
+  const r2 = push(fx + 0.02, -(fy + 0.16), 0.02, -0.12, -1.2);
   indices.push(r0, r1, r2);
 
   const geometry = new BufferGeometry();

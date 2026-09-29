@@ -31,6 +31,7 @@ import {
   pondUniforms,
   pondWakeModule,
   skyModule,
+  pondBedModule,
   floorMaterial,
   foodMaterial,
   plantMaterial,
@@ -59,6 +60,12 @@ function orientXZ(geometry) {
     nrm[i] = 0;
     nrm[i + 1] = 1;
     nrm[i + 2] = 0;
+  }
+  const idx = geometry.index.array;
+  for (let i = 0; i < idx.length; i += 3) {
+    const t = idx[i + 1];
+    idx[i + 1] = idx[i + 2];
+    idx[i + 2] = t;
   }
   geometry.computeBoundingSphere();
   return geometry;
@@ -188,8 +195,8 @@ export async function createPond({ canvas = null, width = 1280, height = 720, fi
   ShadowUniforms.fields.enabled.value = 0;
 
   const camera = new E.PerspectiveCamera(30, width / Math.max(1, height), 0.2, 80);
-  camera.position.set(0, 13.2, 3.6);
-  camera.lookAt(0, -0.55, 0);
+  camera.position.set(0, 10.4, 6.4);
+  camera.lookAt(0, -0.35, 0);
 
   const ext = measureView(camera);
   const sim = createSim({
@@ -202,7 +209,7 @@ export async function createPond({ canvas = null, width = 1280, height = 720, fi
   });
   assignKinds(sim.fish);
 
-  const sun = new E.Vector3(0.28, 0.92, 0.22).normalize();
+  const sun = new E.Vector3(0.48, 0.78, 0.28).normalize();
   G.sunDir.value.copy(sun);
   G.sunColor.value.setRGB(5.4, 5.1, 4.6);
   G.skyIrradiance.value.setRGB(0.42, 0.5, 0.46);
@@ -252,13 +259,14 @@ export async function createPond({ canvas = null, width = 1280, height = 720, fi
   });
   const surface = new WaterSurface({ fft, cdlod, foamTexture });
   surface.wake = { module: pondWakeModule };
-  surface.amplitude.value = 0.72;
-  surface.slopeScale.value = 1.35;
+  surface.terrain = { module: pondBedModule };
+  surface.amplitude.value = 0.58;
+  surface.slopeScale.value = 1.7;
   surface.foamCoverage.value = 0.22;
 
   const caustics = new Caustics(null, fft);
   caustics.strength.value = 0.9;
-  const underwater = installUnderwaterLighting({ fft, caustics, surface });
+  const underwater = installUnderwaterLighting({ fft, caustics, surface, terrain: surface.terrain });
 
   const scene = new E.Scene();
   const meshRenderer = new MeshRenderer();
@@ -270,7 +278,7 @@ export async function createPond({ canvas = null, width = 1280, height = 720, fi
     surface,
     sky: { module: skyModule },
     sceneCopy: sceneRenderer.opaqueCopy,
-    sceneDepthHalf: sceneRenderer.opaqueDepthHalf,
+    sceneDepthHalf: sceneRenderer.opaqueDepthHalf.texture,
   });
   waterMat.params.refraction.value = 0.16;
   waterMat.params.foamIntensity.value = 0.4;
@@ -395,8 +403,8 @@ export async function createPond({ canvas = null, width = 1280, height = 720, fi
       const plant = plants[i];
       const x = sim.bounds.cx + plant.nx * sim.bounds.halfW;
       const z = sim.bounds.cy + plant.ny * sim.bounds.halfH;
-      const s = plant.scaleN * (unit / 5.4);
-      writeInstance(plantMesh, i, x, 0.03, z, plant.rot, s, s * plant.squash);
+      const s = plant.scaleN * (unit / 3.6);
+      writeInstance(plantMesh, i, x, 0.22, z, plant.rot, s, s * plant.squash);
     }
     plantMesh.instanceMatrix.needsUpdate = true;
   }

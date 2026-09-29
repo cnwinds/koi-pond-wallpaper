@@ -70,6 +70,18 @@ export const pondWakeModule = new ShaderModule({
   code: WAKE_WGSL,
 });
 
+// Flat bed so the water shader traces a pond-depth column. Without it the ocean
+// material assumes ~80 m of water and the refraction sample misses the fish.
+export const pondBedModule = new ShaderModule({
+  name: 'pondBed',
+  code: /* wgsl */`
+fn terrainHeightAt(xz: vec2f) -> f32 { return -1.12; }
+fn terrainNormalRock(xz: vec2f) -> vec4f { return vec4f(0.0); }
+fn terrainNormalRockLevel(xz: vec2f, level: f32) -> vec4f { return vec4f(0.0); }
+fn terrainSunShadowAt(P: vec3f) -> f32 { return 1.0; }
+`,
+});
+
 // Enough for WaterMaterial's reflection terms. Not the atmosphere or clouds.
 export const skyModule = new ShaderModule({
   name: 'pondSky',

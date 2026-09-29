@@ -35,7 +35,7 @@ python -m http.server 8765
 
 ## WebGPU 试验（Tidewater 引擎）
 
-根目录的 `index.html` 仍是原来的 WebGL2 壁纸，不需要 Node。旁边另有一条演示，用来看 [Tidewater](https://github.com/dgreenheck/tidewater) 的渲染引擎能不能撑起一张俯视锦鲤池壁纸。只带了它的 `src/engine`（数学、场景、网格、WebGPU 资源、材质）。钓鱼游戏、FFT 海面、体积云和整条后期都没有引进来。水面焦散是演示里手写的 WGSL。
+根目录的 `index.html` 仍是原来的 WebGL2 壁纸，不需要 Node。旁边另有一条演示，用来看 [Tidewater](https://github.com/dgreenheck/tidewater) 的水面和鱼能不能撑起一张俯视锦鲤池。引擎之外还借用了它的 FFT 水面、折射材质、光子焦散、水下光照，以及程序化鱼网格和游泳动画。没有钓鱼游戏、船、村子、体积云或大气。Tidewater 没有锦鲤物种，鱼体用的是红鲷、石鲈、石斑、大海鲢和鹦嘴鱼。
 
 在仓库根目录：
 
@@ -60,8 +60,8 @@ npm run webgpu:smoke      # 无头 WebGPU 画一帧，确认不是空画面
 | | WebGL 壁纸 | WebGPU 演示 |
 | --- | --- | --- |
 | 入口 | 根目录 `index.html`，Lively 也指向它 | `npm run webgpu`，`demos/tidewater-koi/` |
-| 鱼 | 默认 7 条，IK 丝带，上限 16 | 默认约 46 条实例网格 |
-| 水 | 高度场涟漪，中高画质有软焦散 | 池底手写焦散，鱼和荷叶叠在上面 |
+| 鱼 | 默认 7 条，IK 丝带，上限 16 | 默认约 46 条 Tidewater 游泳网格 |
+| 水 | 高度场涟漪，中高画质有软焦散 | Tidewater 水面：FFT 波、折射、焦散；点击走 wake 涟漪 |
 | 天气、日夜 | 有 | 没有 |
 | 省电 | 隐藏即停，失焦降到 8 FPS，默认要低功耗 GPU | 同样会在标签隐藏和 Lively 暂停时停帧，失焦 8 FPS；默认 30 FPS、长边 1440。引擎初始化时请求的是高性能适配器 |
 

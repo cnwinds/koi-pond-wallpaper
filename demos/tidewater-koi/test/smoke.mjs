@@ -71,7 +71,7 @@ if (stats.draws < 4) throw new Error(`expected floor, fish, shadows and plants, 
 
 mkdirSync('/opt/cursor/artifacts', { recursive: true });
 writePNG('/tmp/koi-webgpu-pond.png', W, H, rgba);
-writePNG('/opt/cursor/artifacts/koi-webgpu-pond.png', W, H, rgba);
+writePNG('/opt/cursor/artifacts/koi_pond_tidewater_water.png', W, H, rgba);
 console.log('smoke ok');
 await new Promise((resolve) => setTimeout(resolve, 50));
 process.exit(0);

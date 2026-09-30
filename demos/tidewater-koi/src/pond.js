@@ -302,7 +302,7 @@ export async function createPond({ canvas = null, width = 1280, height = 720, fi
   const fishMesh = batch.createMesh(createSwimMaterial(batch));
   fishMesh.layers.set(LAYERS.OPAQUE);
 
-  const foodMesh = new E.InstancedMesh(orientXZ(new E.CircleGeometry(1, 14)), foodMaterial(), 4);
+  const foodMesh = new E.InstancedMesh(orientXZ(new E.CircleGeometry(1, 14)), foodMaterial(), 12);
   foodMesh.count = 0;
   foodMesh.frustumCulled = false;
 
@@ -425,7 +425,7 @@ export async function createPond({ canvas = null, width = 1280, height = 720, fi
       const yaw = Math.atan2(Math.cos(f.heading), Math.sin(f.heading));
       const yawRate = f.yawRate || 0;
       // Positive heading rate is a left turn: right side lifts, tail lags to the right.
-      const roll = Math.max(-0.42, Math.min(0.42, yawRate * 0.38));
+      const roll = Math.max(-0.48, Math.min(0.48, yawRate * 0.42));
       yawPitchRoll(yaw, 0, roll, _q);
       const o = i * 16;
       D[o] = f.x;
@@ -438,7 +438,7 @@ export async function createPond({ canvas = null, width = 1280, height = 720, fi
       D[o + 7] = _q.w;
       D[o + 8] = f.swim;
       D[o + 9] = 0.05 + Math.min(0.04, f.speed * 0.03);
-      D[o + 10] = Math.max(-0.36, Math.min(0.36, yawRate * 0.28));
+      D[o + 10] = Math.max(-0.4, Math.min(0.4, yawRate * 0.34));
       D[o + 11] = SPECIES[MODELS[f.kind]].pattern + ((f.seed % 1) * 0.83 + 0.02);
       D[o + 12] = f.x - f.prevX;
       D[o + 13] = 0;
@@ -455,8 +455,9 @@ export async function createPond({ canvas = null, width = 1280, height = 720, fi
     foodMesh.count = sim.foods.length;
     for (let i = 0; i < sim.foods.length; i++) {
       const food = sim.foods[i];
-      const pulse = 0.07 + Math.sin(sim.time * 5 + i) * 0.01;
-      writeInstance(foodMesh, i, food.x, -0.12, food.y, sim.time * 0.4, pulse, pulse);
+      const bob = Math.sin(food.bob) * 0.012;
+      const r = food.r || 0.055;
+      writeInstance(foodMesh, i, food.x, -0.08 + bob, food.y, food.bob * 0.05, r, r * 0.86);
     }
     foodMesh.instanceMatrix.needsUpdate = true;
   }

@@ -133,7 +133,7 @@ export function foodMaterial() {
     surface: /* wgsl */`
       let q = in.uv * 2.0 - 1.0;
       let r = length(q);
-      s.albedo = mix(vec3f(0.72, 0.42, 0.14), vec3f(0.38, 0.2, 0.07), smoothstep(0.15, 0.95, r));
+      s.albedo = mix(vec3f(0.86, 0.62, 0.32), vec3f(0.42, 0.24, 0.08), smoothstep(0.05, 0.92, r));
       s.alpha = 1.0;
     `,
   });

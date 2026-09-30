@@ -10,8 +10,26 @@ for (const f of sim.fish) {
 
 assert.equal(sim.feed(100, 100), false);
 assert.equal(sim.feed(0.3, -0.2), true);
-assert.equal(sim.foods.length, 1);
-assert.equal(sim.fish.filter((f) => f.seek != null).length, 7);
+assert.ok(sim.foods.length >= 2 && sim.foods.length <= 3, `click should scatter crumbs, n=${sim.foods.length}`);
+assert.ok(sim.ripples.some((r) => r.amp >= 0.9), 'click should splash');
+sim.step(1 / 30);
+assert.ok(sim.eaten >= 1, 'a fish already on the crumbs should bite');
+assert.ok(sim.fish.filter((f) => f.seek != null).length <= 3, 'at most three fish chase');
+
+const notice = createSim({ fish: 8, halfW: 8, halfH: 4.5, seed: 5 });
+for (const f of notice.fish) {
+  f.x = 1.3;
+  f.y = 0.1;
+  f.heading = Math.PI;
+  f.aim = Math.PI;
+  f.cruiseHeading = Math.PI;
+  f.school = false;
+}
+assert.equal(notice.feed(0, 0), true);
+notice.step(1 / 30);
+const chasing = notice.fish.filter((f) => f.seek != null).length;
+assert.ok(chasing >= 1 && chasing <= 3, `a few fish should approach, chasing=${chasing}`);
+assert.equal(notice.eaten, 0, 'they should not teleport onto the food');
 
 for (let i = 0; i < 30 * 18; i++) sim.step(1 / 30);
 
@@ -26,6 +44,41 @@ let spread = 0;
 for (const f of school) spread += Math.hypot(f.x - sim.bounds.cx, f.y - sim.bounds.cy);
 spread /= school.length;
 assert.ok(spread < 3.2, `school should stay loosely together, spread=${spread}`);
+
+const fade = createSim({ fish: 2, halfW: 6, halfH: 4, seed: 9 });
+assert.equal(fade.feed(0, 0), true);
+for (const f of fade.fish) {
+  f.vision = 0;
+  f.x = 4;
+  f.y = 0;
+}
+for (let i = 0; i < 30 * 30; i++) fade.step(1 / 30);
+assert.equal(fade.eaten, 0, 'uneaten crumbs should disappear without counting as a bite');
+assert.equal(fade.foods.length, 0);
+
+const bite = createSim({ fish: 1, halfW: 6, halfH: 4, seed: 4 });
+const eater = bite.fish[0];
+eater.x = 0;
+eater.y = 0;
+eater.heading = 0;
+eater.aim = 0;
+eater.cruiseHeading = 0;
+eater.yawRate = 0;
+eater.school = false;
+eater.vision = 6;
+eater.greed = 1;
+assert.equal(bite.feed(0.2, 0), true);
+const crumb = bite.foods[0];
+bite.foods.splice(1);
+crumb.x = 0.2;
+crumb.y = 0;
+crumb.vx = 0;
+crumb.vy = 0;
+for (let i = 0; i < 90 && bite.foods.some((p) => p.id === crumb.id); i++) bite.step(1 / 30);
+assert.ok(bite.eaten >= 1, 'mouth should take the crumb');
+assert.ok(bite.foods.every((p) => p.id !== crumb.id), 'bitten crumb is gone');
+assert.ok(eater.eatT > 0 || eater.idleT > 0, 'fish should pause after a bite');
+assert.ok(bite.ripples.some((r) => r.amp > 0.2 && r.amp < 0.6), 'eat should leave a smaller ring');
 
 const turn = createSim({ fish: 1, halfW: 6, halfH: 4, seed: 1 });
 const loner = turn.fish[0];

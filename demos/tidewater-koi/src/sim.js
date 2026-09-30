@@ -1,5 +1,6 @@
-// Koi steering for the WebGPU pond. Wander, a loose feeding school, and
-// click-to-seek. Not the WebGL wallpaper's IK spine, and not Tidewater's fish.
+// Koi steering for the WebGPU pond. Wander, a loose school, and click-to-feed.
+// Feeding follows the wallpaper's feel (a handful of crumbs, a few fish, one bite)
+// in pond metres. Not the wallpaper's IK spine, and not Tidewater's fish AI.
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -20,16 +21,16 @@ function angLerp(a, b, t) {
   return a + angWrap(b - a) * t;
 }
 
-const SEEKERS = 7;
-const MAX_FOOD = 4;
+const SEEKERS = 3;
+const MAX_FOOD = 12;
 const MAX_RIPPLES = 8;
-// Cruise caps, rad/s. The rate eases up to these; it does not step to them.
+// Cruise caps, rad/s. Yaw rate eases toward them; it does not step onto them.
 const TURN_WANDER = 0.7;
-const TURN_FEED = 0.95;
 const TURN_EDGE = 1.15;
 const YAW_GAIN = 1.85;
-const YAW_ACCEL = 0.72;
 const YAW_BRAKE = 1.45;
+const YAW_TAU = 0.58;
+const YAW_BRAKE_TAU = 0.32;
 
 function clamp(v, lim) {
   return Math.max(-lim, Math.min(lim, v));
@@ -50,20 +51,20 @@ function releaseSeek(fish, id) {
 
 // Angular velocity eases toward a stop-limited target, so a turn starts and ends on a curve.
 // Near a half-turn the shortest-path sign flips from one ulp of noise; keep the current direction.
-function stepYaw(f, desired, maxRate, dt) {
+function stepYaw(f, desired, maxRate, dt, tauScale = 1) {
   let err = angWrap(desired - f.heading);
   if (Math.PI - Math.abs(err) < 0.22) {
     const sign = Math.abs(f.yawRate) > 0.02 ? Math.sign(f.yawRate) : (f.turnSign || 1);
     err = sign * Math.abs(err);
   }
   if (Math.abs(err) > 0.25) f.turnSign = Math.sign(err) || f.turnSign || 1;
-  const prop = clamp(err * YAW_GAIN, maxRate);
+  const prop = Math.tanh((err * YAW_GAIN) / Math.max(maxRate, 1e-3)) * maxRate;
   const stop = Math.sqrt(2 * YAW_BRAKE * Math.abs(err));
-  const want = Math.abs(stop) < Math.abs(prop) ? Math.sign(err || prop) * Math.min(maxRate, stop) : prop;
-  const gap = want - f.yawRate;
-  const braking = want * f.yawRate < 0 || Math.abs(want) < Math.abs(f.yawRate) - 1e-6;
-  const maxDy = (braking ? YAW_BRAKE : YAW_ACCEL) * dt;
-  f.yawRate += clamp(gap, maxDy);
+  const want = stop < Math.abs(prop) ? Math.sign(err || prop) * Math.min(maxRate, stop) : prop;
+  const braking = want * f.yawRate < 0 || Math.abs(want) + 1e-4 < Math.abs(f.yawRate);
+  const tau = (braking ? YAW_BRAKE_TAU : YAW_TAU) * tauScale;
+  const alpha = 1 - Math.exp(-dt / Math.max(tau, 1e-3));
+  f.yawRate += (want - f.yawRate) * alpha;
   f.heading = angWrap(f.heading + f.yawRate * dt);
 }
 
@@ -120,6 +121,10 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
       seed: rng() * 20 + 0.2,
       school,
       orbit: 0.35 + rng() * 0.95,
+      greed: 0.32 + rng() * 0.68,
+      vision: 2.6 + rng() * 2.4,
+      eatT: 0,
+      idleT: 0,
       seek: null,
       seekDist: 99,
       z: 0.08 + rng() * 0.1,
@@ -153,33 +158,112 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
     const dx = (x - bounds.cx) / bounds.halfW;
     const dy = (y - bounds.cy) / bounds.halfH;
     if (dx * dx + dy * dy > 1.2) return false;
-    if (foods.length >= MAX_FOOD) {
-      const old = foods.shift();
-      releaseSeek(fish, old.id);
+    const n = 2 + ((rng() * 2) | 0);
+    for (let i = 0; i < n; i++) {
+      while (foods.length >= MAX_FOOD) {
+        const old = foods.shift();
+        releaseSeek(fish, old.id);
+      }
+      foods.push({
+        id: nextFood++,
+        x: x + (rng() - 0.5) * 0.36,
+        y: y + (rng() - 0.5) * 0.28,
+        vx: (rng() - 0.5) * 0.22,
+        vy: (rng() - 0.5) * 0.18,
+        r: 0.05 + rng() * 0.02,
+        bob: rng() * Math.PI * 2,
+        life: 18 + rng() * 8,
+        eaten: false,
+      });
     }
-    const item = { id: nextFood++, x, y, life: 9, splashed: false };
-    foods.push(item);
     ripple(x, y, 1);
-    const ranked = fish
-      .map((f, index) => ({ index, d: Math.hypot(f.x - x, f.y - y) }))
-      .sort((a, b) => a.d - b.d);
-    const n = Math.min(SEEKERS, ranked.length);
-    for (let i = 0; i < n; i++) fish[ranked[i].index].seek = item.id;
     return true;
   }
 
+  function bite(f, pellet) {
+    if (!pellet || pellet.eaten) return;
+    pellet.eaten = true;
+    eaten++;
+    f.seek = null;
+    f.eatT = 0.42;
+    f.idleT = 0.65 + rng() * 0.75;
+    f.cruiseHeading = f.heading;
+    f.seekDist = 99;
+    ripple(pellet.x, pellet.y, 0.32);
+  }
+
+  function assignSeekers() {
+    const ranked = [];
+    for (let i = 0; i < fish.length; i++) {
+      const f = fish[i];
+      if (f.eatT > 0) {
+        if (f.seek != null) {
+          f.seek = null;
+          f.cruiseHeading = f.heading;
+        }
+        continue;
+      }
+      let best = null;
+      let bestD = Infinity;
+      const notice = f.vision * (0.45 + f.greed * 0.7);
+      for (let j = 0; j < foods.length; j++) {
+        const pellet = foods[j];
+        if (pellet.eaten) continue;
+        const d = Math.hypot(pellet.x - f.x, pellet.y - f.y);
+        if (d < bestD && d <= notice) {
+          bestD = d;
+          best = pellet;
+        }
+      }
+      if (best) ranked.push({ f, dist: bestD, id: best.id });
+    }
+    ranked.sort((a, b) => a.dist - b.dist);
+    const chosen = new Set();
+    const n = Math.min(SEEKERS, ranked.length);
+    for (let i = 0; i < n; i++) {
+      ranked[i].f.seek = ranked[i].id;
+      chosen.add(ranked[i].f);
+    }
+    for (let i = 0; i < fish.length; i++) {
+      const f = fish[i];
+      if (chosen.has(f) || f.eatT > 0) continue;
+      if (f.seek != null) {
+        f.seek = null;
+        f.cruiseHeading = f.heading;
+      }
+    }
+  }
+
   function stepFish(f, dt) {
-    const food = f.seek != null ? foodById(f.seek) : null;
-    if (f.seek != null && !food) {
+    if (f.eatT > 0) f.eatT = Math.max(0, f.eatT - dt);
+    const chewing = f.eatT > 0;
+    const food = !chewing && f.seek != null ? foodById(f.seek) : null;
+    if (!chewing && f.seek != null && (!food || food.eaten)) {
       f.seek = null;
       f.cruiseHeading = f.heading;
     }
+    if (food) f.idleT = 0;
+    else if (f.idleT > 0) f.idleT = Math.max(0, f.idleT - dt);
 
     let raw = f.cruiseHeading;
-    if (food) {
+    let feeding = false;
+    if (chewing) {
+      raw = f.heading;
+      f.seekDist = 99;
+    } else if (food) {
       f.seekDist = Math.hypot(food.x - f.x, food.y - f.y);
-      if (f.seekDist < 0.28) raw = f.aim;
-      else raw = Math.atan2(food.y - f.y, food.x - f.x);
+      const nose = f.len * 0.58 * 0.46;
+      const mx = f.x + Math.cos(f.heading) * nose;
+      const my = f.y + Math.sin(f.heading) * nose;
+      const mouth = Math.hypot(food.x - mx, food.y - my);
+      if (mouth < 0.16 || f.seekDist < 0.14) {
+        bite(f, food);
+        raw = f.heading;
+        f.seekDist = 99;
+      } else {
+        feeding = true;
+        raw = Math.atan2(food.y - f.y, food.x - f.x);
+      }
     } else if (f.school) {
       const wob = time * 0.08 + f.phase;
       const tx = anchor.x + Math.cos(wob) * f.orbit;
@@ -208,7 +292,6 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
 
     let sepX = 0;
     let sepY = 0;
-    const reach = Math.max(0.2, f.len * 0.16);
     for (let i = 0; i < fish.length; i++) {
       const o = fish[i];
       if (o === f) continue;
@@ -227,27 +310,40 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
     if (sepX !== 0 || sepY !== 0) {
       let off = angWrap(Math.atan2(sepY, sepX) - raw);
       off = Math.max(-0.5, Math.min(0.5, off));
-      const eating = food && f.seekDist < reach * 2.2;
-      sepTarget = off * (eating ? 0.16 : 0.32);
+      const closeFeed = feeding && f.seekDist < 1.05;
+      sepTarget = off * (closeFeed ? 0.12 : 0.32);
     }
     f.sep += (sepTarget - f.sep) * expAlpha(dt, 0.55);
     raw = angWrap(raw + f.sep);
 
-    const hold = food && f.seekDist < 0.28 && er <= 0.62;
-    if (!hold) {
-      let tau = food ? 0.34 : f.school ? 0.4 : 0.82;
-      if (er > 0.62) tau = Math.min(tau, 0.36);
-      f.aim = angLerp(f.aim, raw, expAlpha(dt, tau));
+    let tau = feeding ? 0.18 : f.school ? 0.4 : 0.82;
+    if (er > 0.62) tau = Math.min(tau, 0.36);
+    if (chewing) tau = 0.35;
+    f.aim = angLerp(f.aim, raw, expAlpha(dt, tau));
+    let turnRate = edge ? TURN_EDGE : TURN_WANDER;
+    if (feeding) {
+      const body = Math.max(0.45, f.len * 0.58);
+      let minR = 0.8;
+      if (f.seekDist < body * 2.2) {
+        const t = Math.max(0, Math.min(1, f.seekDist / (body * 2.2)));
+        minR = 0.42 + (0.8 - 0.42) * t;
+      }
+      const tight = f.speed / Math.max(0.25, minR * body);
+      turnRate = Math.min(2.05, Math.max(0.45, tight));
     }
-    const turnRate = edge ? TURN_EDGE : food ? TURN_FEED : TURN_WANDER;
-    stepYaw(f, f.aim, turnRate, dt);
+    stepYaw(f, f.aim, turnRate, dt, feeding ? 0.55 : 1);
 
     let targetSpeed = f.cruise * (0.92 + 0.08 * Math.sin(time * 0.22 + f.phase));
-    if (food) {
-      const arrive = f.seekDist < 0.7 ? Math.max(0.22, f.seekDist / 0.7) : 1;
-      targetSpeed = f.cruise * 1.75 * arrive;
+    if (chewing) targetSpeed = f.cruise * 0.18;
+    else if (f.idleT > 0 && !feeding) targetSpeed = f.cruise * 0.36;
+    else if (feeding) {
+      const err = Math.abs(angWrap(raw - f.heading));
+      const align = 1 - Math.min(1, err / 1.35);
+      const arriveR = 0.9;
+      const ramp = f.seekDist < arriveR ? 0.45 + 0.55 * (f.seekDist / arriveR) : 1;
+      targetSpeed = Math.max(f.cruise * (0.65 + 0.85 * align) * ramp, f.cruise * 0.32);
     }
-    const accel = 1.1 * dt;
+    const accel = 0.85 * dt;
     f.speed += Math.max(-accel, Math.min(accel, targetSpeed - f.speed));
 
     f.x += Math.cos(f.heading) * f.speed * dt;
@@ -260,14 +356,6 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
       f.y = Math.min(bounds.cy + maxY, Math.max(bounds.cy - maxY, f.y));
     }
 
-    if (food && f.seekDist < reach) {
-      food.life -= dt * 2.4;
-      f.speed *= 0.9;
-      if (!food.splashed) {
-        food.splashed = true;
-        ripple(food.x, food.y, 0.55);
-      }
-    }
   }
 
   function step(dt) {
@@ -277,22 +365,37 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
     anchor.x = bounds.cx + Math.cos(time * 0.07) * bounds.halfW * 0.16;
     anchor.y = bounds.cy + Math.sin(time * 0.05) * bounds.halfH * 0.14;
 
+    const damp = Math.exp(Math.log(0.94) * h * 30);
+    for (let i = foods.length - 1; i >= 0; i--) {
+      const pellet = foods[i];
+      pellet.life -= h;
+      pellet.bob += h * 3;
+      pellet.vx *= damp;
+      pellet.vy *= damp;
+      pellet.x += pellet.vx * h;
+      pellet.y += pellet.vy * h;
+      const maxX = bounds.halfW * 0.9;
+      const maxY = bounds.halfH * 0.86;
+      pellet.x = Math.min(bounds.cx + maxX, Math.max(bounds.cx - maxX, pellet.x));
+      pellet.y = Math.min(bounds.cy + maxY, Math.max(bounds.cy - maxY, pellet.y));
+      if (pellet.life <= 0) {
+        releaseSeek(fish, pellet.id);
+        foods.splice(i, 1);
+      }
+    }
+
+    assignSeekers();
     for (let i = 0; i < fish.length; i++) stepFish(fish[i], h);
+
+    for (let i = foods.length - 1; i >= 0; i--) {
+      if (!foods[i].eaten) continue;
+      releaseSeek(fish, foods[i].id);
+      foods.splice(i, 1);
+    }
 
     for (let i = ripples.length - 1; i >= 0; i--) {
       ripples[i].age += h;
       if (ripples[i].age > 8) ripples.splice(i, 1);
-    }
-
-    for (let i = foods.length - 1; i >= 0; i--) {
-      const food = foods[i];
-      food.life -= h * 0.28;
-      if (food.life <= 0) {
-        eaten++;
-        ripple(food.x, food.y, 0.35);
-        foods.splice(i, 1);
-        releaseSeek(fish, food.id);
-      }
     }
   }
 

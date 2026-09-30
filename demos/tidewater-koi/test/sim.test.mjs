@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createSim } from '../src/sim.js';
+import { angWrap, createSim } from '../src/sim.js';
 
 const sim = createSim({ fish: 24, halfW: 8, halfH: 4.5, seed: 3 });
 assert.equal(sim.fish.length, 24);
@@ -27,4 +27,33 @@ for (const f of school) spread += Math.hypot(f.x - sim.bounds.cx, f.y - sim.boun
 spread /= school.length;
 assert.ok(spread < 3.2, `school should stay loosely together, spread=${spread}`);
 
-console.log('sim ok', { eaten: sim.eaten, school: school.length, spread: spread.toFixed(2) });
+const turn = createSim({ fish: 1, halfW: 6, halfH: 4, seed: 1 });
+const loner = turn.fish[0];
+loner.x = 0;
+loner.y = 0;
+loner.heading = 0;
+loner.targetHeading = Math.PI;
+loner.school = false;
+loner.seek = null;
+loner.retarget = 100;
+let prev = loner.heading;
+let maxStep = 0;
+for (let i = 0; i < 60; i++) {
+  turn.step(1 / 30);
+  maxStep = Math.max(maxStep, Math.abs(angWrap(loner.heading - prev)));
+  prev = loner.heading;
+}
+assert.ok(maxStep < 1.25 / 30 + 1e-6, `heading snapped, step=${maxStep}`);
+assert.ok(Math.abs(angWrap(loner.heading)) > 0.4, 'fish should start the turn');
+assert.ok(Math.abs(angWrap(loner.heading)) < 1.3, `turn too fast, heading=${loner.heading}`);
+
+loner.x = 6 * 0.9;
+loner.y = 0;
+loner.heading = 0;
+loner.targetHeading = 0;
+prev = loner.heading;
+turn.step(1 / 30);
+const edgeStep = Math.abs(angWrap(loner.heading - prev));
+assert.ok(edgeStep < 1.25 / 30 + 1e-6, `edge heading snapped, step=${edgeStep}`);
+
+console.log('sim ok', { eaten: sim.eaten, school: school.length, spread: spread.toFixed(2), maxStep: maxStep.toFixed(4) });

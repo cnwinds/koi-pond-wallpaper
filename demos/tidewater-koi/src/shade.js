@@ -20,8 +20,8 @@ fn wakeHeight(xz: vec2f) -> f32 {
     let rip = pondWake.rings[i];
     if (rip.w <= 0.01) { continue; }
     let dist = length(xz - rip.xy);
-    let x = dist - rip.z * 1.25;
-    let env = exp(-rip.z * 0.48) * rip.w;
+    let x = dist - rip.z * 0.38;
+    let env = exp(-rip.z * 0.2) * rip.w;
     let gauss = exp(-x * x * 2.4);
     h += sin(x * 7.2) * gauss * env * 0.07;
   }
@@ -40,8 +40,8 @@ fn wakeFragment(xz: vec2f) -> WakeFrag {
     if (rip.w <= 0.01) { continue; }
     let o = xz - rip.xy;
     let dist = max(length(o), 0.04);
-    let x = dist - rip.z * 1.25;
-    let env = exp(-rip.z * 0.48) * rip.w;
+    let x = dist - rip.z * 0.38;
+    let env = exp(-rip.z * 0.2) * rip.w;
     let gauss = exp(-x * x * 2.4);
     let s = sin(x * 7.2);
     let c = cos(x * 7.2);

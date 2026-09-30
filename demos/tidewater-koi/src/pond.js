@@ -246,6 +246,8 @@ export async function createPond({ canvas = null, width = 1280, height = 720, fi
     },
   });
   fft.foamBias.value = 0.22;
+  // Caustics and underwater light both read this clock. 1 is open-ocean speed.
+  fft.timeScale = 0.24;
   const foamTexture = createFoamTexture(null, 256);
   const cdlod = new CDLOD({
     gridSize: 72,
@@ -415,7 +417,7 @@ export async function createPond({ canvas = null, width = 1280, height = 720, fi
     batch.begin();
     for (let i = 0; i < sim.fish.length; i++) {
       const f = sim.fish[i];
-      const freq = 1.05 + Math.max(0, f.hz - 4.2) * 0.28;
+      const freq = 0.72 + Math.max(0, f.hz - 4.2) * 0.16;
       const dPhase = dt * TAU * freq;
       f.swim = (f.swim + dPhase) % (TAU * 64);
       const length = f.len * 0.58;

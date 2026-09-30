@@ -33,6 +33,50 @@ python -m http.server 8765
 
 第一次打开后应能看到水面与游动的锦鲤。点一下水，会落下鱼食。
 
+## WebGPU 试验（Tidewater 引擎）
+
+根目录的 `index.html` 仍是原来的 WebGL2 壁纸，不需要 Node。旁边另有一条演示，用来看 [Tidewater](https://github.com/dgreenheck/tidewater) 的水面和鱼能不能撑起一张俯视锦鲤池。引擎之外还借用了它的 FFT 水面、折射材质、光子焦散、水下光照，以及程序化鱼网格和游泳动画。没有钓鱼游戏、船、村子、体积云或大气。Tidewater 没有锦鲤物种，鱼体用的是红鲷、石鲈、石斑、大海鲢和鹦嘴鱼。
+
+在仓库根目录：
+
+```bash
+npm install
+npm run webgpu
+```
+
+浏览器打开 <http://127.0.0.1:5190/> 。点水面会落下鱼食，附近的鱼游过去。默认大约 46 条鱼、30 FPS，画面长边不超过 1440。地址栏可以改：`?fish=40&fps=24&res=1280&ui=0&demo=1&perf=1`。`demo=1` 会自己投喂，`perf=1` 在角上写帧率和绘制次数，`ui=0` 连那行提示也不显示。
+
+```bash
+npm run webgpu:build      # 静态文件在 demos/tidewater-koi/dist
+npm run webgpu:preview
+npm run webgpu:sim        # 只跑游动和趋食，不需要 GPU
+npm run webgpu:smoke      # 无头 WebGPU 画一帧，确认不是空画面
+```
+
+需要能开 WebGPU 的浏览器：较新的 Chrome、Edge 或 Safari。页面若提示启动失败，改看根目录的 WebGL 壁纸即可。
+
+和现有壁纸比：
+
+| | WebGL 壁纸 | WebGPU 演示 |
+| --- | --- | --- |
+| 入口 | 根目录 `index.html`，Lively 也指向它 | `npm run webgpu`，`demos/tidewater-koi/` |
+| 鱼 | 默认 7 条，IK 丝带，上限 16 | 默认约 46 条 Tidewater 游泳网格 |
+| 水 | 高度场涟漪，中高画质有软焦散 | Tidewater 水面：FFT 波、折射、焦散；点击走 wake 涟漪 |
+| 天气、日夜 | 有 | 没有 |
+| 省电 | 隐藏即停，失焦降到 8 FPS，默认要低功耗 GPU | 同样会在标签隐藏和 Lively 暂停时停帧，失焦 8 FPS；默认 30 FPS、长边 1440。引擎初始化时请求的是高性能适配器 |
+
+不要把这条演示设成 Lively 或 Windows 宿主的默认壁纸。那两条路都走 WebView2，很多运行时没有 WebGPU，或者要很新的 Edge WebView2 且没被策略关掉。贴出来是白屏时，继续用原来的 WebGL 页。浏览器里能开，不代表 WebView2 里也能开。
+
+公开预览不合并进 `main`，也不替换 Lively 入口。静态文件在分支 `cursor/webgpu-pages-42d9`，页面地址：
+
+<https://raw.githack.com/cnwinds/koi-pond-wallpaper/cursor/webgpu-pages-42d9/index.html>
+
+用 Chrome、Edge 或 Safari 打开。第一次会先看到 githack 的 “Open the page”（他们的防钓鱼确认），点一下才进入池塘。页面角上写着这不是 Lively 壁纸。重新发布：`npm run webgpu:publish`（只推那个静态分支）。
+
+`https://cnwinds.github.io/koi-pond-wallpaper/` 还没有。仓库没开 GitHub Pages，当前令牌创建站点会 403。管理员打开 [Settings → Pages](https://github.com/cnwinds/koi-pond-wallpaper/settings/pages)，Source 选 **GitHub Actions** 并保存，然后重跑 [这次失败的部署](https://github.com/cnwinds/koi-pond-wallpaper/actions/runs/36566086428)。工作流只上传这条演示，而且不会在 `main` 上触发。细节在 [demos/tidewater-koi/DEMO.md](demos/tidewater-koi/DEMO.md)。
+
+主观效果、耗时和限制写在 [demos/tidewater-koi/DEMO.md](demos/tidewater-koi/DEMO.md)。引擎版权和上游提交号在 `demos/tidewater-koi/vendor/tidewater/`。
+
 ## Windows：导入 Lively Wallpaper
 
 1. 安装 [Lively Wallpaper](https://github.com/rocksdanister/lively/releases)（Microsoft Store 或 GitHub 安装包均可）。若网页壁纸是白屏，先安装 / 修复 [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)。

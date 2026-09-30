@@ -26,7 +26,7 @@ import { fishGeometry } from '../vendor/tidewater/world/fish/FishGeometry.js';
 import { SPECIES } from '../vendor/tidewater/world/fish/FishSpecies.js';
 import { createSwimMaterial } from '../vendor/tidewater/world/fish/FishMaterial.js';
 import { ReefBatch } from '../vendor/tidewater/world/reef/ReefBatch.js';
-import { createSim, mulberry32, angWrap } from './sim.js';
+import { createSim, mulberry32 } from './sim.js';
 import {
   pondUniforms,
   pondWakeModule,
@@ -423,8 +423,10 @@ export async function createPond({ canvas = null, width = 1280, height = 720, fi
       const length = f.len * 0.58;
       const y = -0.38 - (f.seed % 1) * 0.28;
       const yaw = Math.atan2(Math.cos(f.heading), Math.sin(f.heading));
-      const yawRate = angWrap(f.heading - f.prevH) / dt;
-      yawPitchRoll(yaw, 0, Math.max(-0.35, Math.min(0.35, yawRate * 0.08)), _q);
+      const yawRate = f.yawRate || 0;
+      // Positive heading rate is a left turn: right side lifts, tail lags to the right.
+      const roll = Math.max(-0.42, Math.min(0.42, yawRate * 0.38));
+      yawPitchRoll(yaw, 0, roll, _q);
       const o = i * 16;
       D[o] = f.x;
       D[o + 1] = y;
@@ -436,7 +438,7 @@ export async function createPond({ canvas = null, width = 1280, height = 720, fi
       D[o + 7] = _q.w;
       D[o + 8] = f.swim;
       D[o + 9] = 0.05 + Math.min(0.04, f.speed * 0.03);
-      D[o + 10] = Math.max(-0.22, Math.min(0.22, yawRate * 0.045));
+      D[o + 10] = Math.max(-0.36, Math.min(0.36, yawRate * 0.28));
       D[o + 11] = SPECIES[MODELS[f.kind]].pattern + ((f.seed % 1) * 0.83 + 0.02);
       D[o + 12] = f.x - f.prevX;
       D[o + 13] = 0;

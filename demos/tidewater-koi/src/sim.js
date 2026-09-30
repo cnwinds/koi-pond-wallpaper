@@ -23,15 +23,48 @@ function angLerp(a, b, t) {
 const SEEKERS = 7;
 const MAX_FOOD = 4;
 const MAX_RIPPLES = 8;
-// rad/s. A half-turn takes a few seconds. Feed is a little quicker; the bank is quicker still.
-const TURN_WANDER = 0.62;
+// Cruise caps, rad/s. The rate eases up to these; it does not step to them.
+const TURN_WANDER = 0.7;
 const TURN_FEED = 0.95;
-const TURN_EDGE = 1.2;
+const TURN_EDGE = 1.15;
+const YAW_GAIN = 1.85;
+const YAW_ACCEL = 0.72;
+const YAW_BRAKE = 1.45;
 
-function turnToward(current, desired, rate, dt) {
-  const delta = angWrap(desired - current);
-  const maxStep = rate * dt;
-  return angWrap(current + Math.max(-maxStep, Math.min(maxStep, delta)));
+function clamp(v, lim) {
+  return Math.max(-lim, Math.min(lim, v));
+}
+
+function expAlpha(dt, tau) {
+  return 1 - Math.exp(-dt / Math.max(tau, 1e-4));
+}
+
+function releaseSeek(fish, id) {
+  for (let i = 0; i < fish.length; i++) {
+    const f = fish[i];
+    if (f.seek !== id) continue;
+    f.seek = null;
+    f.cruiseHeading = f.heading;
+  }
+}
+
+// Angular velocity eases toward a stop-limited target, so a turn starts and ends on a curve.
+// Near a half-turn the shortest-path sign flips from one ulp of noise; keep the current direction.
+function stepYaw(f, desired, maxRate, dt) {
+  let err = angWrap(desired - f.heading);
+  if (Math.PI - Math.abs(err) < 0.22) {
+    const sign = Math.abs(f.yawRate) > 0.02 ? Math.sign(f.yawRate) : (f.turnSign || 1);
+    err = sign * Math.abs(err);
+  }
+  if (Math.abs(err) > 0.25) f.turnSign = Math.sign(err) || f.turnSign || 1;
+  const prop = clamp(err * YAW_GAIN, maxRate);
+  const stop = Math.sqrt(2 * YAW_BRAKE * Math.abs(err));
+  const want = Math.abs(stop) < Math.abs(prop) ? Math.sign(err || prop) * Math.min(maxRate, stop) : prop;
+  const gap = want - f.yawRate;
+  const braking = want * f.yawRate < 0 || Math.abs(want) < Math.abs(f.yawRate) - 1e-6;
+  const maxDy = (braking ? YAW_BRAKE : YAW_ACCEL) * dt;
+  f.yawRate += clamp(gap, maxDy);
+  f.heading = angWrap(f.heading + f.yawRate * dt);
 }
 
 export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0, cy = 0, seed = 7 } = {}) {
@@ -73,7 +106,11 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
       x,
       y,
       heading,
-      targetHeading: heading,
+      aim: heading,
+      yawRate: 0,
+      turnSign: 0,
+      cruiseHeading: heading,
+      sep: 0,
       speed: 0.45 + rng() * 0.25,
       cruise: 0.52 + rng() * 0.38,
       len,
@@ -83,7 +120,6 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
       seed: rng() * 20 + 0.2,
       school,
       orbit: 0.35 + rng() * 0.95,
-      retarget: 0.4 + rng() * 1.6,
       seek: null,
       seekDist: 99,
       z: 0.08 + rng() * 0.1,
@@ -119,7 +155,7 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
     if (dx * dx + dy * dy > 1.2) return false;
     if (foods.length >= MAX_FOOD) {
       const old = foods.shift();
-      for (const f of fish) if (f.seek === old.id) f.seek = null;
+      releaseSeek(fish, old.id);
     }
     const item = { id: nextFood++, x, y, life: 9, splashed: false };
     foods.push(item);
@@ -133,33 +169,41 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
   }
 
   function stepFish(f, dt) {
-    let desired = f.targetHeading;
     const food = f.seek != null ? foodById(f.seek) : null;
     if (f.seek != null && !food) {
       f.seek = null;
-      f.targetHeading = f.heading;
+      f.cruiseHeading = f.heading;
     }
 
+    let raw = f.cruiseHeading;
     if (food) {
-      desired = Math.atan2(food.y - f.y, food.x - f.x);
       f.seekDist = Math.hypot(food.x - f.x, food.y - f.y);
+      if (f.seekDist < 0.28) raw = f.aim;
+      else raw = Math.atan2(food.y - f.y, food.x - f.x);
     } else if (f.school) {
       const wob = time * 0.08 + f.phase;
       const tx = anchor.x + Math.cos(wob) * f.orbit;
       const ty = anchor.y + Math.sin(wob * 0.9) * f.orbit * 0.7;
-      const aim = Math.atan2(ty - f.y, tx - f.x);
-      desired = angLerp(f.targetHeading, aim, 0.8);
+      const dist = Math.hypot(tx - f.x, ty - f.y);
       f.seekDist = 99;
+      raw = dist < 0.35 ? f.aim : Math.atan2(ty - f.y, tx - f.x);
     } else {
       f.seekDist = 99;
+      const cruiseRate = Math.sin(time * 0.085 + f.phase * 1.7) * 0.1
+        + Math.sin(time * 0.037 + f.seed) * 0.04;
+      f.cruiseHeading = angWrap(f.cruiseHeading + cruiseRate * dt);
+      raw = f.cruiseHeading;
     }
 
     const nx = (f.x - bounds.cx) / (bounds.halfW * 0.8);
     const ny = (f.y - bounds.cy) / (bounds.halfH * 0.76);
     const er = nx * nx + ny * ny;
-    if (er > 1) {
+    let edge = false;
+    if (er > 0.62) {
       const inward = Math.atan2(bounds.cy - f.y, bounds.cx - f.x);
-      desired = angLerp(desired, inward, Math.min(1, (er - 1) * 1.2));
+      const t = Math.min(0.9, (er - 0.62) * 1.15);
+      raw = angLerp(raw, inward, t);
+      edge = er > 1;
     }
 
     let sepX = 0;
@@ -179,18 +223,26 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
         sepY += dy * push;
       }
     }
+    let sepTarget = 0;
     if (sepX !== 0 || sepY !== 0) {
-      const sepA = Math.atan2(sepY, sepX);
-      let off = angWrap(sepA - desired);
-      off = Math.max(-0.65, Math.min(0.65, off));
+      let off = angWrap(Math.atan2(sepY, sepX) - raw);
+      off = Math.max(-0.5, Math.min(0.5, off));
       const eating = food && f.seekDist < reach * 2.2;
-      desired = angWrap(desired + off * (eating ? 0.22 : 0.45));
+      sepTarget = off * (eating ? 0.16 : 0.32);
     }
+    f.sep += (sepTarget - f.sep) * expAlpha(dt, 0.55);
+    raw = angWrap(raw + f.sep);
 
-    const turnRate = er > 1 ? TURN_EDGE : food ? TURN_FEED : TURN_WANDER;
-    f.heading = turnToward(f.heading, desired, turnRate, dt);
+    const hold = food && f.seekDist < 0.28 && er <= 0.62;
+    if (!hold) {
+      let tau = food ? 0.34 : f.school ? 0.4 : 0.82;
+      if (er > 0.62) tau = Math.min(tau, 0.36);
+      f.aim = angLerp(f.aim, raw, expAlpha(dt, tau));
+    }
+    const turnRate = edge ? TURN_EDGE : food ? TURN_FEED : TURN_WANDER;
+    stepYaw(f, f.aim, turnRate, dt);
 
-    let targetSpeed = f.cruise * (0.86 + 0.14 * Math.sin(time * 0.35 + f.phase));
+    let targetSpeed = f.cruise * (0.92 + 0.08 * Math.sin(time * 0.22 + f.phase));
     if (food) {
       const arrive = f.seekDist < 0.7 ? Math.max(0.22, f.seekDist / 0.7) : 1;
       targetSpeed = f.cruise * 1.75 * arrive;
@@ -198,26 +250,14 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
     const accel = 1.1 * dt;
     f.speed += Math.max(-accel, Math.min(accel, targetSpeed - f.speed));
 
-    const wobble = Math.sin(time * 0.7 + f.phase) * 0.035;
-    const h = f.heading + wobble;
-    f.x += Math.cos(h) * f.speed * dt;
-    f.y += Math.sin(h) * f.speed * dt;
+    f.x += Math.cos(f.heading) * f.speed * dt;
+    f.y += Math.sin(f.heading) * f.speed * dt;
 
     const maxX = bounds.halfW * 0.86;
     const maxY = bounds.halfH * 0.82;
     if (f.x > bounds.cx + maxX || f.x < bounds.cx - maxX || f.y > bounds.cy + maxY || f.y < bounds.cy - maxY) {
       f.x = Math.min(bounds.cx + maxX, Math.max(bounds.cx - maxX, f.x));
       f.y = Math.min(bounds.cy + maxY, Math.max(bounds.cy - maxY, f.y));
-    }
-
-    f.retarget -= dt;
-    if (f.retarget <= 0 && !food) {
-      f.targetHeading = angWrap(f.heading + (rng() - 0.5) * 0.55);
-      if (f.school) {
-        const aim = Math.atan2(anchor.y - f.y, anchor.x - f.x);
-        f.targetHeading = angLerp(f.targetHeading, aim, 0.35);
-      }
-      f.retarget = 3.2 + rng() * 4.2;
     }
 
     if (food && f.seekDist < reach) {
@@ -251,7 +291,7 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
         eaten++;
         ripple(food.x, food.y, 0.35);
         foods.splice(i, 1);
-        for (const f of fish) if (f.seek === food.id) f.seek = null;
+        releaseSeek(fish, food.id);
       }
     }
   }

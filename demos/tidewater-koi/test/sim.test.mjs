@@ -32,28 +32,62 @@ const loner = turn.fish[0];
 loner.x = 0;
 loner.y = 0;
 loner.heading = 0;
-loner.targetHeading = Math.PI;
+loner.aim = Math.PI;
+loner.cruiseHeading = Math.PI;
+loner.yawRate = 0;
+loner.sep = 0;
 loner.school = false;
 loner.seek = null;
-loner.retarget = 100;
 let prev = loner.heading;
-let maxStep = 0;
+let prevRate = 0;
+let firstStep = 0;
+let maxRateStep = 0;
+const rates = [];
 for (let i = 0; i < 60; i++) {
   turn.step(1 / 30);
-  maxStep = Math.max(maxStep, Math.abs(angWrap(loner.heading - prev)));
+  const step = Math.abs(angWrap(loner.heading - prev));
+  if (i === 0) firstStep = step;
+  maxRateStep = Math.max(maxRateStep, Math.abs(loner.yawRate - prevRate));
+  rates.push(loner.yawRate);
   prev = loner.heading;
+  prevRate = loner.yawRate;
 }
-assert.ok(maxStep < 1.25 / 30 + 1e-6, `heading snapped, step=${maxStep}`);
-assert.ok(Math.abs(angWrap(loner.heading)) > 0.4, 'fish should start the turn');
-assert.ok(Math.abs(angWrap(loner.heading)) < 1.3, `turn too fast, heading=${loner.heading}`);
+assert.ok(firstStep < 0.004, `first heading step should ease in, step=${firstStep}`);
+assert.ok(Math.abs(rates[0]) < 0.04, `yaw rate jumped on frame 1, rate=${rates[0]}`);
+assert.ok(Math.abs(rates[0]) < Math.abs(rates[8]) && Math.abs(rates[8]) < Math.abs(rates[14]), 'yaw rate should ramp');
+assert.ok(rates.every((r) => r > 0), 'half-turn should not flip direction');
+assert.ok(maxRateStep < 1.5 / 30 + 1e-4, `yaw accel stepped, dRate=${maxRateStep}`);
+const turned = Math.abs(angWrap(loner.heading));
+assert.ok(turned > 0.35, `fish should start the turn, heading=${loner.heading}`);
+assert.ok(turned < 1.6, `turn too fast, heading=${loner.heading}`);
+
+const before = loner.heading;
+loner.yawRate = 0;
+loner.cruiseHeading = angWrap(loner.heading + Math.PI);
+loner.aim = loner.heading;
+prev = loner.heading;
+turn.step(1 / 30);
+const retarget = Math.abs(angWrap(loner.heading - prev));
+assert.ok(retarget < 0.01, `retarget snapped heading, step=${retarget}`);
+assert.ok(Math.abs(angWrap(loner.aim - before)) < 0.2, `aim jumped to the new target, aim=${loner.aim}`);
 
 loner.x = 6 * 0.9;
 loner.y = 0;
 loner.heading = 0;
-loner.targetHeading = 0;
+loner.aim = 0;
+loner.cruiseHeading = 0;
+loner.yawRate = 0;
+loner.sep = 0;
 prev = loner.heading;
 turn.step(1 / 30);
 const edgeStep = Math.abs(angWrap(loner.heading - prev));
-assert.ok(edgeStep < 1.25 / 30 + 1e-6, `edge heading snapped, step=${edgeStep}`);
+assert.ok(edgeStep < 0.01, `edge heading snapped, step=${edgeStep}`);
 
-console.log('sim ok', { eaten: sim.eaten, school: school.length, spread: spread.toFixed(2), maxStep: maxStep.toFixed(4) });
+console.log('sim ok', {
+  eaten: sim.eaten,
+  school: school.length,
+  spread: spread.toFixed(2),
+  firstStep: firstStep.toFixed(5),
+  yaw0: rates[0].toFixed(4),
+  heading: turned.toFixed(3),
+});

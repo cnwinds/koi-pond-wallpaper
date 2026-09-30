@@ -452,20 +452,22 @@ export async function createPond({ canvas = null, width = 1280, height = 720, fi
     batch.commit();
     batch.dataAttr.needsUpdate = true;
 
-    foodMesh.count = sim.foods.length;
-    for (let i = 0; i < sim.foods.length; i++) {
-      const food = sim.foods[i];
-      const bob = Math.sin(food.bob) * 0.012;
-      const r = food.r || 0.055;
-      writeInstance(foodMesh, i, food.x, -0.08 + bob, food.y, food.bob * 0.05, r, r * 0.86);
+    if (pond._foodEpoch !== sim.foodEpoch) {
+      pond._foodEpoch = sim.foodEpoch;
+      foodMesh.count = sim.foods.length;
+      for (let i = 0; i < sim.foods.length; i++) {
+        const food = sim.foods[i];
+        const r = food.r || 0.055;
+        writeInstance(foodMesh, i, food.x, -0.08, food.y, 0, r, r * 0.86);
+      }
+      foodMesh.instanceMatrix.needsUpdate = true;
     }
-    foodMesh.instanceMatrix.needsUpdate = true;
   }
 
   function packRings() {
     const data = pondUniforms.fields.rings.value;
     data.fill(0);
-    const n = Math.min(8, sim.ripples.length);
+    const n = Math.min(4, sim.ripples.length);
     for (let i = 0; i < n; i++) {
       const ring = sim.ripples[i];
       const o = i * 4;

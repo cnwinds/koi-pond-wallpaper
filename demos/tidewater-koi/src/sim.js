@@ -23,7 +23,7 @@ function angLerp(a, b, t) {
 
 const SEEKERS = 3;
 const MAX_FOOD = 12;
-const MAX_RIPPLES = 8;
+const MAX_RIPPLES = 3;
 // Cruise caps, rad/s. Yaw rate eases toward them; it does not step onto them.
 const TURN_WANDER = 0.7;
 const TURN_EDGE = 1.15;
@@ -78,6 +78,7 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
   let nextFood = 1;
   let time = 0;
   let eaten = 0;
+  let foodEpoch = 1;
   const bounds = { halfW, halfH, cx, cy };
 
   const schoolN = Math.max(4, Math.round(count * 0.34));
@@ -132,7 +133,16 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
   }
 
   function ripple(x, y, amp) {
-    ripples.push({ x, y, age: 0, amp });
+    // A bite on top of a fresh click used to add another full-screen ring in the same frame.
+    for (let i = 0; i < ripples.length; i++) {
+      const ring = ripples[i];
+      if (ring.age > 0.4) continue;
+      if (Math.hypot(ring.x - x, ring.y - y) < 0.8) {
+        ring.amp = Math.max(ring.amp, amp);
+        return;
+      }
+    }
+    ripples.push({ x, y, age: 0, amp: Math.min(amp, 0.72) });
     if (ripples.length > MAX_RIPPLES) ripples.shift();
   }
 
@@ -176,7 +186,8 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
         eaten: false,
       });
     }
-    ripple(x, y, 1);
+    ripple(x, y, 0.72);
+    foodEpoch++;
     return true;
   }
 
@@ -366,12 +377,14 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
     anchor.y = bounds.cy + Math.sin(time * 0.05) * bounds.halfH * 0.14;
 
     const damp = Math.exp(Math.log(0.94) * h * 30);
+    let foodMoved = false;
     for (let i = foods.length - 1; i >= 0; i--) {
       const pellet = foods[i];
       pellet.life -= h;
       pellet.bob += h * 3;
       pellet.vx *= damp;
       pellet.vy *= damp;
+      if (Math.abs(pellet.vx) > 0.004 || Math.abs(pellet.vy) > 0.004) foodMoved = true;
       pellet.x += pellet.vx * h;
       pellet.y += pellet.vy * h;
       const maxX = bounds.halfW * 0.9;
@@ -381,8 +394,10 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
       if (pellet.life <= 0) {
         releaseSeek(fish, pellet.id);
         foods.splice(i, 1);
+        foodMoved = true;
       }
     }
+    if (foodMoved) foodEpoch++;
 
     assignSeekers();
     for (let i = 0; i < fish.length; i++) stepFish(fish[i], h);
@@ -391,6 +406,7 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
       if (!foods[i].eaten) continue;
       releaseSeek(fish, foods[i].id);
       foods.splice(i, 1);
+      foodEpoch++;
     }
 
     for (let i = ripples.length - 1; i >= 0; i--) {
@@ -406,6 +422,7 @@ export function createSim({ fish: fishCount = 46, halfW = 8, halfH = 4.5, cx = 0
     bounds,
     get time() { return time; },
     get eaten() { return eaten; },
+    get foodEpoch() { return foodEpoch; },
     step,
     feed,
     setBounds,

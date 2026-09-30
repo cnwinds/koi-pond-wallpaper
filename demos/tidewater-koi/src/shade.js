@@ -7,7 +7,7 @@ import { commonModule } from '../vendor/tidewater/engine/render/wgsl/common.js';
 import { Material } from '../vendor/tidewater/engine/render/Material.js';
 
 export const pondUniforms = new UniformBlock('PondWake', {
-  rings: ['vec4f[8]', new Float32Array(32)],
+  rings: ['vec4f[4]', new Float32Array(16)],
   bounds: ['vec4f', [8, 4.5, 0, 0]],
 }, { label: 'pondWake' });
 
@@ -16,14 +16,15 @@ struct WakeFrag { slopes: vec2f, foam: f32, aeration: f32 }
 
 fn wakeHeight(xz: vec2f) -> f32 {
   var h = 0.0;
-  for (var i = 0u; i < 8u; i = i + 1u) {
+  for (var i = 0u; i < 4u; i = i + 1u) {
     let rip = pondWake.rings[i];
     if (rip.w <= 0.01) { continue; }
-    let dist = length(xz - rip.xy);
-    let x = dist - rip.z * 0.38;
+    let x = length(xz - rip.xy) - rip.z * 0.38;
+    // The crest is a thin band. Pixels and vertices outside it skip the trig.
+    if (abs(x) > 1.45) { continue; }
     let env = exp(-rip.z * 0.2) * rip.w;
     let gauss = exp(-x * x * 2.4);
-    h += sin(x * 7.2) * gauss * env * 0.07;
+    h += sin(x * 7.2) * gauss * env * 0.055;
   }
   return h;
 }
@@ -35,17 +36,18 @@ fn wakeDisplacement(xz: vec2f) -> vec3f {
 fn wakeFragment(xz: vec2f) -> WakeFrag {
   var slope = vec2f(0.0);
   var foam = 0.0;
-  for (var i = 0u; i < 8u; i = i + 1u) {
+  for (var i = 0u; i < 4u; i = i + 1u) {
     let rip = pondWake.rings[i];
     if (rip.w <= 0.01) { continue; }
     let o = xz - rip.xy;
     let dist = max(length(o), 0.04);
     let x = dist - rip.z * 0.38;
+    if (abs(x) > 1.45) { continue; }
     let env = exp(-rip.z * 0.2) * rip.w;
     let gauss = exp(-x * x * 2.4);
     let s = sin(x * 7.2);
     let c = cos(x * 7.2);
-    let dh = (c * 7.2 * gauss + s * gauss * (-4.8 * x)) * env * 0.07;
+    let dh = (c * 7.2 * gauss + s * gauss * (-4.8 * x)) * env * 0.055;
     slope += (o / dist) * dh;
     foam += sat(s) * gauss * env * 0.18;
   }
@@ -130,6 +132,10 @@ export function foodMaterial() {
     roughness: 0.7,
     metalness: 0,
     underwaterLighting: 'full',
+    // Bob in the shader so a settled crumb does not rewrite its instance matrix every frame.
+    vertex: /* wgsl */`
+      v.worldOffset = vec3f(0.0, sin(frame.time * 3.0 + v.model[3].x * 17.0) * 0.012, 0.0);
+    `,
     surface: /* wgsl */`
       let q = in.uv * 2.0 - 1.0;
       let r = length(q);

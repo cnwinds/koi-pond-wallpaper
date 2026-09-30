@@ -11,8 +11,10 @@ for (const f of sim.fish) {
 assert.equal(sim.feed(100, 100), false);
 assert.equal(sim.feed(0.3, -0.2), true);
 assert.ok(sim.foods.length >= 2 && sim.foods.length <= 3, `click should scatter crumbs, n=${sim.foods.length}`);
-assert.ok(sim.ripples.some((r) => r.amp >= 0.9), 'click should splash');
+assert.ok(sim.ripples.some((r) => r.amp >= 0.6), 'click should splash');
+assert.equal(sim.ripples.length, 1, 'one click is one ring');
 sim.step(1 / 30);
+assert.ok(sim.ripples.length <= 2, `bites should not stack rings, n=${sim.ripples.length}`);
 assert.ok(sim.eaten >= 1, 'a fish already on the crumbs should bite');
 assert.ok(sim.fish.filter((f) => f.seek != null).length <= 3, 'at most three fish chase');
 
@@ -78,7 +80,16 @@ for (let i = 0; i < 90 && bite.foods.some((p) => p.id === crumb.id); i++) bite.s
 assert.ok(bite.eaten >= 1, 'mouth should take the crumb');
 assert.ok(bite.foods.every((p) => p.id !== crumb.id), 'bitten crumb is gone');
 assert.ok(eater.eatT > 0 || eater.idleT > 0, 'fish should pause after a bite');
-assert.ok(bite.ripples.some((r) => r.amp > 0.2 && r.amp < 0.6), 'eat should leave a smaller ring');
+assert.ok(bite.ripples.length <= 2, 'a bite on the click should not add another full ring');
+
+const settle = createSim({ fish: 1, halfW: 6, halfH: 4, seed: 6 });
+settle.fish[0].vision = 0;
+settle.feed(0, 0);
+for (let i = 0; i < 30 * 3; i++) settle.step(1 / 30);
+const epoch = settle.foodEpoch;
+for (let i = 0; i < 30; i++) settle.step(1 / 30);
+assert.equal(settle.foodEpoch, epoch, 'settled crumbs should stop moving');
+assert.ok(settle.foods.length >= 1, 'crumbs still there');
 
 const turn = createSim({ fish: 1, halfW: 6, halfH: 4, seed: 1 });
 const loner = turn.fish[0];
